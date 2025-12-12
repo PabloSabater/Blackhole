@@ -33,13 +33,15 @@ class CelestialBody:
         self.value = max(1, self.value)
         
         # Posición Polar (Optimización)
-        self.orbit_radius = random.randint(SPAWN_DISTANCE_MIN, SPAWN_DISTANCE_MAX)
+        # Se asigna desde fuera si se pasa min_dist/max_dist, si no usa defaults
+        self.orbit_radius = 0 
         self.angle = random.uniform(0, 2 * math.pi)
         
         # Velocidad angular: Más lejos = más lento (Kepler simplificado)
         # Ajustamos la velocidad para que sea jugable
         # REDUCIDO: Multiplicador bajado de 0.02 a 0.005 para movimiento mucho más lento y relajante
-        self.angular_speed = (100 / self.orbit_radius) * 0.005 * random.choice([-1, 1])
+        self.angular_speed_base = 0.005 * random.choice([-1, 1])
+        self.angular_speed = 0 # Se calcula al setear el radio
         
         # Generación Procedural de Forma (Polígono)
         # El tamaño visual también se ve afectado por el multiplicador
@@ -48,6 +50,21 @@ class CelestialBody:
         self.base_size = self.target_size # Referencia
         self.spawn_anim_timer = 0
         # Duración de animación escalada con el tamaño (más grande = más lento/pesado)
+        self.spawn_anim_duration = int(30 + 20 * self.size_multiplier)
+        
+        self.points = self._generate_shape()
+        
+        # Coordenadas cartesianas para colisiones (se actualizan en update)
+        self.x = 0
+        self.y = 0
+
+    def set_spawn_position(self, min_dist, max_dist):
+        """Asigna una posición orbital válida basada en el radio del agujero negro"""
+        self.orbit_radius = random.randint(int(min_dist), int(max_dist))
+        # Recalcular velocidad angular basada en el nuevo radio
+        self.angular_speed = (100 / self.orbit_radius) * self.angular_speed_base
+
+    def _generate_shape(self):
         self.spawn_anim_duration = int(30 + 20 * self.size_multiplier)
         
         self.points = self._generate_shape()
@@ -121,56 +138,57 @@ class CelestialBody:
             py = py_norm * screen_size
             screen_points.append((screen_x + px, screen_y + py))
         
-        # 1. Dibujar fondo oscuro (parte dañada)
-        dark_color = [max(0, c - 100) for c in self.color]
-        if len(screen_points) > 2:
-            pygame.draw.polygon(surface, dark_color, screen_points)
-        
-        # 2. Dibujar parte viva (recortada verticalmente)
-        # Creamos una superficie temporal para hacer el recorte
-        # Calculamos el bounding box del polígono
-        if not screen_points: return
-        
+        if len(screen_points) < 3: return
+
+        # Culling simple: Si el bounding box está fuera de pantalla, no dibujar
+        # Margen de seguridad de 10px
         min_x = min(p[0] for p in screen_points)
         max_x = max(p[0] for p in screen_points)
         min_y = min(p[1] for p in screen_points)
         max_y = max(p[1] for p in screen_points)
         
-        width = int(max_x - min_x) + 2
-        height = int(max_y - min_y) + 2
+        if (max_x < -10 or min_x > SCREEN_WIDTH + 10 or 
+            max_y < -10 or min_y > SCREEN_HEIGHT + 10):
+            return
+
+        # 1. Dibujar fondo oscuro (parte dañada)
+        dark_color = [max(0, c - 100) for c in self.color]
+        pygame.draw.polygon(surface, dark_color, screen_points)
         
-        if width > 0 and height > 0:
-            # Superficie temporal con canal alfa
-            temp_surf = pygame.Surface((width, height), pygame.SRCALPHA)
-            
-            # Puntos relativos a la superficie temporal
-            local_points = [(p[0] - min_x, p[1] - min_y) for p in screen_points]
-            
-            # Dibujar el polígono lleno en la temp surf
-            if len(local_points) > 2:
-                pygame.draw.polygon(temp_surf, self.color, local_points)
-            
-            # Calcular altura de recorte basada en salud
+        # 2. Dibujar parte viva (recortada verticalmente)
+        # Optimizacion: Usar set_clip en lugar de crear superficies temporales
+        # min_y y max_y ya calculados arriba para el culling
+        height = max_y - min_y
+        
+        if height > 0:
             health_pct = max(0, self.current_health / self.max_health)
-            clip_height = int(height * (1 - health_pct))
+            # La parte "viva" está abajo. Calculamos Y donde empieza.
+            clip_top = min_y + (height * (1 - health_pct))
             
-            # "Borrar" la parte superior (daño) usando un rect con modo BLEND_RGBA_MULT (o simplemente fill transparente)
-            # En pygame simple, podemos dibujar un rect transparente encima con flag especial, 
-            # o más fácil: rellenar la parte superior con transparente.
-            # Usaremos un rect para borrar la parte superior
-            erase_rect = pygame.Rect(0, 0, width, clip_height)
-            temp_surf.fill((0,0,0,0), erase_rect, special_flags=pygame.BLEND_RGBA_MULT)
-
-            # Dibujar borde suavizado (Antialiasing)
-            if len(local_points) > 2:
-                pygame.draw.aalines(temp_surf, (255,255,255), True, local_points)
-
-            # Blit al main surface
-            surface.blit(temp_surf, (min_x, min_y))
+            # Guardar clip actual
+            old_clip = surface.get_clip()
+            
+            # Definir zona de dibujo (desde clip_top hacia abajo)
+            # Usamos coordenadas de pantalla completas para el ancho
+            clip_rect = pygame.Rect(0, int(clip_top), SCREEN_WIDTH, int(SCREEN_HEIGHT - clip_top + 100))
+            
+            # Respetar clip existente si lo hubiera
+            if old_clip:
+                clip_rect = clip_rect.clip(old_clip)
+            
+            surface.set_clip(clip_rect)
+            
+            # Dibujar polígono vivo
+            pygame.draw.polygon(surface, self.color, screen_points)
+            # Brillo interno
+            pygame.draw.aalines(surface, (255, 255, 255), True, screen_points)
+            
+            # Restaurar clip
+            surface.set_clip(old_clip)
 
         # 3. Dibujar borde (Nuevo)
         # Usamos el color oscuro para el borde, para definir bien la forma
-        pygame.draw.polygon(surface, dark_color, screen_points, 2)
+        # pygame.draw.polygon(surface, dark_color, screen_points, 2) # Redundante con aalines
         # Añadimos suavizado al borde
         pygame.draw.aalines(surface, dark_color, True, screen_points)
 
@@ -372,10 +390,9 @@ class PlayerCursor:
                 self.y + visual_radius * math.sin(end_angle)
             )
             
-            # Sombra/Borde negro para contraste
-            pygame.draw.line(surface, (0, 0, 0), start_pos, end_pos, 4)
-            # Línea de color (Blanco para máximo contraste con el borde negro)
-            pygame.draw.line(surface, (255, 255, 255), start_pos, end_pos, 2)
+            # Dibujar línea del cursor
+            # Usamos un solo color oscuro y sólido para mejor visibilidad en fondo claro
+            pygame.draw.line(surface, COLOR_CURSOR, start_pos, end_pos, 3)
             
         # Punto central para precisión (Opcional, comentado por ahora)
         # pygame.draw.circle(surface, (0, 0, 0), (self.x, self.y), 4)

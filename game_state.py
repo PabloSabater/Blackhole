@@ -15,10 +15,11 @@ class GameState(Enum):
     TRANSITION_TO_PLAY = 6    # Nuevo estado de transición
     TRANSITION_TO_SHOP = 7    # Transición a tienda
     TRANSITION_FROM_SHOP = 8  # Transición desde tienda
+    TRANSITION_FROM_MENU = 9  # Transición desde menú
 
 class GameManager:
     def __init__(self):
-        self.state = GameState.PLAYING  # Empezamos directo en juego por ahora
+        self.state = GameState.MENU  # Empezamos en el Menú Principal
         self.black_hole = BlackHole()
         self.cursor = PlayerCursor()
         self.bodies = []
@@ -62,9 +63,20 @@ class GameManager:
         self.shop_transition_radius = 0
         self.max_transition_radius = int((SCREEN_WIDTH**2 + SCREEN_HEIGHT**2)**0.5 / 2) + 50
         self.transition_speed = self.max_transition_radius / (FPS * 0.5) # 0.5 segundos
+        self.menu_anim_offset = 0 # Animación de salida del menú
         
         # Zoom
         self.current_zoom = 1.0
+
+        # --- Optimización: Fuentes Precargadas ---
+        self.font_ui = pygame.font.SysFont("Arial", 24)
+        self.font_ui_large = pygame.font.SysFont("Arial", 60, bold=True)
+        self.font_ui_small = pygame.font.SysFont("Arial", 30)
+        self.font_btn = pygame.font.SysFont("Arial", 24, bold=True)
+        self.font_stats = pygame.font.SysFont("Arial", 20)
+        self.font_title = pygame.font.SysFont("Arial", 20, bold=True)
+        self.font_desc = pygame.font.SysFont("Arial", 14)
+        self.font_cost = pygame.font.SysFont("Arial", 16, bold=True)
 
     def get_upgrade_cost(self, key):
         """Calcula el coste del siguiente nivel de una mejora"""
@@ -122,7 +134,11 @@ class GameManager:
         self.fission_chance = fis_data["base_value"] + (self.upgrades["fission"] * fis_data["increment"])
 
     def update(self):
-        if self.state == GameState.PLAYING:
+        if self.state == GameState.MENU:
+            self._update_menu()
+        elif self.state == GameState.TRANSITION_FROM_MENU:
+            self._update_transition_from_menu()
+        elif self.state == GameState.PLAYING:
             self._update_playing()
         elif self.state == GameState.TRANSITION_TO_SUMMARY:
             self._update_transition_summary()
@@ -139,6 +155,20 @@ class GameManager:
         
         # El cursor siempre se actualiza para poder navegar menús
         self.cursor.update()
+
+    def _update_menu(self):
+        # Solo actualizamos el agujero negro para que pulse
+        self.black_hole.update()
+
+    def _update_transition_from_menu(self):
+        self.black_hole.update()
+        # Animación: Aumentar offset
+        self.menu_anim_offset += 15 # Velocidad de animación
+        
+        # Si ya salieron de pantalla (aprox 400px)
+        if self.menu_anim_offset > 400:
+            self.state = GameState.PLAYING
+            self.menu_anim_offset = 0
 
     def _update_transition_to_shop(self):
         self.shop_transition_radius += self.transition_speed
@@ -213,6 +243,13 @@ class GameManager:
 
     def handle_input(self, event):
         """Maneja inputs específicos que no son continuos (como clicks)"""
+        if self.state == GameState.MENU and event.type == pygame.MOUSEBUTTONDOWN:
+            if event.button == 1: # Click izquierdo
+                # Botón más abajo (+150)
+                play_rect = pygame.Rect(SCREEN_WIDTH//2 - 100, SCREEN_HEIGHT//2 + 150, 200, 60)
+                if play_rect.collidepoint(event.pos):
+                    self.state = GameState.TRANSITION_FROM_MENU
+
         if self.state == GameState.SUMMARY and event.type == pygame.MOUSEBUTTONDOWN:
             if event.button == 1: # Click izquierdo
                 restart_rect, shop_rect = self._get_summary_buttons_rects()
@@ -294,7 +331,17 @@ class GameManager:
                 # Spawneamos un nivel aleatorio entre 1 y el máximo desbloqueado
                 level = random.randint(1, max_unlocked_level)
                 
-                self.bodies.append(CelestialBody(level=level))
+                new_body = CelestialBody(level=level)
+                
+                # Calcular distancia de spawn dinámica
+                # Mínimo: Radio del agujero negro + margen (para no nacer dentro)
+                # Máximo: Escalado con el nivel del agujero negro para llenar más pantalla al hacer zoom out
+                min_spawn = max(SPAWN_DISTANCE_MIN, self.black_hole.radius + 50)
+                max_spawn = SPAWN_DISTANCE_MAX + (self.black_hole.level * 50)
+                
+                new_body.set_spawn_position(min_spawn, max_spawn)
+                
+                self.bodies.append(new_body)
                 self.spawned_count += 1
 
         # 3. Actualizar Entidades
@@ -388,8 +435,16 @@ class GameManager:
                         max_unlocked_level = min(6, 1 + int(self.mass_bonus))
                         new_level = min(max_unlocked_level, body.level + random.randint(0, 1))
                         
-                        # Crear nuevo cuerpo (ya se inicializa con posición aleatoria válida)
+                        # Crear nuevo cuerpo
                         new_body = CelestialBody(level=new_level)
+                        
+                        # Heredar posición aproximada del padre pero con variación
+                        # Usamos el radio actual del padre +/- un poco
+                        min_spawn = max(SPAWN_DISTANCE_MIN, body.orbit_radius - 30)
+                        max_spawn = body.orbit_radius + 30
+                        new_body.set_spawn_position(min_spawn, max_spawn)
+                        new_body.angle = body.angle + random.uniform(-0.2, 0.2) # Cerca angularmente
+                        
                         new_body.update() # Para setear x,y iniciales
                         
                         self.bodies.append(new_body)
@@ -467,11 +522,13 @@ class GameManager:
         for text in self.floating_texts:
             text.draw(surface, zoom)
             
-        # UI Básica
+                # UI Básica
         self._draw_ui(surface)
         
         # Pantallas especiales
-        if self.state == GameState.SUMMARY:
+        if self.state == GameState.MENU or self.state == GameState.TRANSITION_FROM_MENU:
+            self._draw_menu(surface)
+        elif self.state == GameState.SUMMARY:
             self._draw_summary(surface)
         elif self.state == GameState.PROGRESSION:
             self._draw_progression(surface)
@@ -487,6 +544,30 @@ class GameManager:
         # Dibujar Cursor (siempre encima de todo, incluso UI)
         # El cursor recibe el zoom para escalar su radio visualmente
         self.cursor.draw(surface, zoom)
+
+    def _draw_menu(self, surface):
+        offset = self.menu_anim_offset
+        
+        # Título Grande (Más arriba: -250) - Se mueve hacia ARRIBA (-offset)
+        title_text = self.font_ui_large.render(TITLE, True, COLOR_TEXT)
+        surface.blit(title_text, (SCREEN_WIDTH//2 - title_text.get_width()//2, SCREEN_HEIGHT//2 - 250 - offset))
+        
+        # Botón Jugar (Más abajo: +150) - Se mueve hacia ABAJO (+offset)
+        play_rect = pygame.Rect(SCREEN_WIDTH//2 - 100, SCREEN_HEIGHT//2 + 150 + offset, 200, 60)
+        
+        mx, my = pygame.mouse.get_pos()
+        is_hover = play_rect.collidepoint(mx, my)
+        
+        color_bg = (60, 60, 60) if not is_hover else (90, 90, 90)
+        pygame.draw.rect(surface, color_bg, play_rect, border_radius=15)
+        pygame.draw.rect(surface, COLOR_TEXT, play_rect, width=2, border_radius=15)
+        
+        play_text = self.font_btn.render("JUGAR", True, COLOR_TEXT_INVERTED)
+        surface.blit(play_text, (play_rect.centerx - play_text.get_width()//2, play_rect.centery - play_text.get_height()//2))
+        
+        # Instrucciones (También se mueven hacia abajo)
+        instr_text = self.font_desc.render("Usa el mouse para mover el agujero negro", True, COLOR_TEXT)
+        surface.blit(instr_text, (SCREEN_WIDTH//2 - instr_text.get_width()//2, SCREEN_HEIGHT - 50 + offset))
 
     def end_run_from_pause(self):
         """Termina la run desde el menú de pausa"""
@@ -516,25 +597,20 @@ class GameManager:
         
         # Texto "PAUSA" parpadeante
         if (pygame.time.get_ticks() // 500) % 2 == 0:
-            font_large = pygame.font.SysFont("Arial", 60, bold=True)
-            text = font_large.render("PAUSA", True, COLOR_TEXT)
+            text = self.font_ui_large.render("PAUSA", True, COLOR_TEXT)
             # Efecto de sombra/glitch simple
             surface.blit(text, (SCREEN_WIDTH//2 - text.get_width()//2 + 2, SCREEN_HEIGHT//2 - 100 + 2))
             surface.blit(text, (SCREEN_WIDTH//2 - text.get_width()//2, SCREEN_HEIGHT//2 - 100))
             
         # Opciones del menú
-        font_small = pygame.font.SysFont("Arial", 30)
-        
-        resume_text = font_small.render("ESC - Reanudar", True, COLOR_TEXT)
-        end_text = font_small.render("Q - Terminar Run", True, COLOR_TEXT)
+        resume_text = self.font_ui_small.render("ESC - Reanudar", True, COLOR_TEXT)
+        end_text = self.font_ui_small.render("Q - Terminar Run", True, COLOR_TEXT)
         
         # Centrar textos
         surface.blit(resume_text, (SCREEN_WIDTH//2 - resume_text.get_width()//2, SCREEN_HEIGHT//2))
         surface.blit(end_text, (SCREEN_WIDTH//2 - end_text.get_width()//2, SCREEN_HEIGHT//2 + 50))
 
     def _draw_ui(self, surface):
-        font = pygame.font.SysFont("Arial", 24)
-        
         if self.state == GameState.PLAYING:
             # Barra de XP (Arriba Centro)
             bar_width = 400
@@ -552,15 +628,15 @@ class GameManager:
                 pygame.draw.rect(surface, COLOR_XP_BAR_FILL, (bar_x, bar_y, fill_width, bar_height), border_radius=10)
             
             # Texto Nivel
-            level_text = font.render(f"Nivel {self.black_hole.level}", True, COLOR_TEXT)
+            level_text = self.font_ui.render(f"Nivel {self.black_hole.level}", True, COLOR_TEXT)
             surface.blit(level_text, (bar_x + bar_width + 10, bar_y - 2))
 
             # Tiempo
-            time_text = font.render(f"Tiempo: {int(self.time_remaining)}s", True, COLOR_TEXT)
+            time_text = self.font_ui.render(f"Tiempo: {int(self.time_remaining)}s", True, COLOR_TEXT)
             surface.blit(time_text, (20, 20))
             
             # Dinero
-            money_text = font.render(f"Dinero: ${self.money_earned}", True, COLOR_TEXT)
+            money_text = self.font_ui.render(f"Dinero: ${self.money_earned}", True, COLOR_TEXT)
             surface.blit(money_text, (20, 50))
 
     def _get_summary_buttons_rects(self):
@@ -577,18 +653,14 @@ class GameManager:
         return restart_rect, shop_rect
 
     def _draw_summary(self, surface):
-        font = pygame.font.SysFont("Arial", 24)
-        font_btn = pygame.font.SysFont("Arial", 24, bold=True)
-        font_stats = pygame.font.SysFont("Arial", 20)
-        
         # Pantalla de Resumen (Fondo Negro = Agujero Negro Gigante)
         # No necesitamos overlay porque el agujero negro ya cubre todo
         
         # Usamos color invertido (claro)
         # Subimos el título y los dineros
-        title = font.render("¡RUN TERMINADA!", True, COLOR_TEXT_INVERTED)
-        score = font.render(f"Ganancias: ${self.money_earned}", True, COLOR_TEXT_INVERTED)
-        total = font.render(f"Banco Total: ${self.total_money}", True, COLOR_MONEY_TEXT)
+        title = self.font_ui.render("¡RUN TERMINADA!", True, COLOR_TEXT_INVERTED)
+        score = self.font_ui.render(f"Ganancias: ${self.money_earned}", True, COLOR_TEXT_INVERTED)
+        total = self.font_ui.render(f"Banco Total: ${self.total_money}", True, COLOR_MONEY_TEXT)
         
         surface.blit(title, (SCREEN_WIDTH//2 - title.get_width()//2, SCREEN_HEIGHT//2 - 200))
         surface.blit(score, (SCREEN_WIDTH//2 - score.get_width()//2, SCREEN_HEIGHT//2 - 160))
@@ -599,7 +671,7 @@ class GameManager:
         line_height = 25
         
         # Título de sección
-        stats_title = font_stats.render("Cuerpos Absorbidos:", True, (200, 200, 200))
+        stats_title = self.font_stats.render("Cuerpos Absorbidos:", True, (200, 200, 200))
         surface.blit(stats_title, (SCREEN_WIDTH//2 - stats_title.get_width()//2, stats_start_y))
         
         current_y = stats_start_y + 30
@@ -613,7 +685,7 @@ class GameManager:
                 
                 # Texto: "Asteroides Nivel X: Y"
                 text_str = f"Asteroides Nivel {level}: {count}"
-                text_surf = font_stats.render(text_str, True, color)
+                text_surf = self.font_stats.render(text_str, True, color)
                 
                 surface.blit(text_surf, (SCREEN_WIDTH//2 - text_surf.get_width()//2, current_y))
                 current_y += line_height
@@ -628,7 +700,7 @@ class GameManager:
         pygame.draw.rect(surface, color_restart_bg, restart_rect, border_radius=12)
         pygame.draw.rect(surface, COLOR_TEXT_INVERTED, restart_rect, width=2, border_radius=12)
         
-        restart_text = font_btn.render("Repetir (R)", True, COLOR_TEXT_INVERTED)
+        restart_text = self.font_btn.render("Repetir (R)", True, COLOR_TEXT_INVERTED)
         surface.blit(restart_text, (restart_rect.centerx - restart_text.get_width()//2, restart_rect.centery - restart_text.get_height()//2))
         
         # Botón Tienda
@@ -637,7 +709,7 @@ class GameManager:
         pygame.draw.rect(surface, color_shop_bg, shop_rect, border_radius=12)
         pygame.draw.rect(surface, COLOR_XP_BAR_FILL, shop_rect, width=2, border_radius=12)
         
-        shop_text = font_btn.render("Mejoras (M)", True, COLOR_XP_BAR_FILL)
+        shop_text = self.font_btn.render("Mejoras (M)", True, COLOR_XP_BAR_FILL)
         surface.blit(shop_text, (shop_rect.centerx - shop_text.get_width()//2, shop_rect.centery - shop_text.get_height()//2))
 
     def _draw_progression(self, surface):
@@ -645,10 +717,6 @@ class GameManager:
         surface.fill(COLOR_BACKGROUND)
         
         center_x, center_y = SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2
-        
-        font_title = pygame.font.SysFont("Arial", 20, bold=True)
-        font_desc = pygame.font.SysFont("Arial", 14)
-        font_cost = pygame.font.SysFont("Arial", 16, bold=True)
         
         node_radius = 15
         
@@ -721,7 +789,7 @@ class GameManager:
             
             # Nivel dentro
             if node_radius > 10:
-                icon_text = font_desc.render(str(level), True, COLOR_TEXT)
+                icon_text = self.font_desc.render(str(level), True, COLOR_TEXT)
                 surface.blit(icon_text, (x - icon_text.get_width()//2, y - icon_text.get_height()//2))
 
         # Botón Central (Volver)
@@ -731,22 +799,22 @@ class GameManager:
         pygame.draw.circle(surface, center_color, (center_x, center_y), center_radius)
         pygame.draw.circle(surface, COLOR_TEXT, (center_x, center_y), center_radius, 2)
         
-        back_text = font_desc.render("BACK", True, COLOR_TEXT)
+        back_text = self.font_desc.render("BACK", True, COLOR_TEXT)
         surface.blit(back_text, (center_x - back_text.get_width()//2, center_y - back_text.get_height()//2))
         
         # Mostrar Dinero Total arriba
-        money_surf = font_title.render(f"BANCO: ${self.total_money}", True, COLOR_MONEY_TEXT) # Verde oscuro se ve bien
+        money_surf = self.font_title.render(f"BANCO: ${self.total_money}", True, COLOR_MONEY_TEXT) # Verde oscuro se ve bien
         surface.blit(money_surf, (center_x - money_surf.get_width()//2, 50))
         
         # Etiquetas de Ramas (Colores más oscuros para contraste)
         # Ajustadas posiciones para el nuevo espaciado
-        lbl_ast = font_desc.render("ASTEROIDES", True, (50, 100, 150))
+        lbl_ast = self.font_desc.render("ASTEROIDES", True, (50, 100, 150))
         surface.blit(lbl_ast, (center_x - 250, center_y - 30))
         
-        lbl_bh = font_desc.render("AGUJERO NEGRO", True, (100, 50, 150))
+        lbl_bh = self.font_desc.render("AGUJERO NEGRO", True, (100, 50, 150))
         surface.blit(lbl_bh, (center_x + 150, center_y - 30))
         
-        lbl_uniq = font_desc.render("ÚNICAS", True, (150, 150, 50))
+        lbl_uniq = self.font_desc.render("ÚNICAS", True, (150, 150, 50))
         surface.blit(lbl_uniq, (center_x - lbl_uniq.get_width()//2, center_y - 150))
 
         # DIBUJAR TOOLTIP AL FINAL (ENCIMA DE TODO)
@@ -755,15 +823,15 @@ class GameManager:
             
             # Contenido del tooltip
             lines = [
-                (data["name"], font_title, COLOR_TEXT_INVERTED),
-                (data["description"], font_desc, (200, 200, 200)),
+                (data["name"], self.font_title, COLOR_TEXT_INVERTED),
+                (data["description"], self.font_desc, (200, 200, 200)),
             ]
             
             if hovered_node["is_maxed"]:
-                lines.append(("MAX LEVEL", font_cost, (100, 255, 100)))
+                lines.append(("MAX LEVEL", self.font_cost, (100, 255, 100)))
             else:
                 cost_color = COLOR_MONEY_TEXT if hovered_node["can_buy"] else (255, 100, 100)
-                lines.append((f"Cost: ${hovered_node['cost']}", font_cost, cost_color))
+                lines.append((f"Cost: ${hovered_node['cost']}", self.font_cost, cost_color))
                 
                 # Mostrar incremento
                 current_val = data["base_value"] + (hovered_node["level"] * data["increment"])
@@ -772,7 +840,7 @@ class GameManager:
                     val_str = f"{current_val:.2f} -> {next_val:.2f}"
                 else:
                     val_str = f"{current_val} -> {next_val}"
-                lines.append((f"Effect: {val_str}", font_desc, (150, 150, 255)))
+                lines.append((f"Effect: {val_str}", self.font_desc, (150, 150, 255)))
 
             # Calcular dimensiones
             box_width = 220

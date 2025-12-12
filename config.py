@@ -13,7 +13,7 @@ COLOR_BACKGROUND = (250, 243, 224)  # Un beige muy suave y cálido
 # Elementos UI
 COLOR_TEXT = (89, 69, 69)           # Marrón oscuro suave para texto
 COLOR_TEXT_INVERTED = (250, 243, 224) # Beige claro (igual al fondo original) para texto sobre negro
-COLOR_CURSOR = (150, 150, 150)      # Gris para el borde del cursor
+COLOR_CURSOR = (115, 95, 95)        # Marrón pastel suave para el cursor (Coherente con el texto)
 COLOR_BLACK_HOLE = (25, 25, 25)     # Negro casi puro
 COLOR_XP_BAR_BG = (230, 230, 230)   # Fondo barra XP
 COLOR_XP_BAR_FILL = (100, 200, 200) # Relleno barra XP (Cyan pastel)
@@ -35,8 +35,8 @@ MASS_COLORS = {
 }
 
 # --- Configuración de Juego ---
-GAME_DURATION = 30      # Duración de la run en segundos
-BASE_DAMAGE = 5         # Daño base por tick del jugador (Aumentado de 1 a 5)
+GAME_DURATION = 20      # Duración de la run en segundos (Reducido para partidas rápidas e intensas)
+BASE_DAMAGE = 8         # Daño base por tick del jugador (Aumentado de 5 a 8)
 DAMAGE_TICK_RATE = 30   # Cada cuántos frames se aplica daño (60 FPS / 30 = 2 veces por seg)
 
 # --- Configuración del Jugador ---
@@ -45,7 +45,7 @@ CURSOR_RADIUS = 35      # Radio del área de efecto (Reducido de 80 para permiti
 # --- Configuración del Agujero Negro ---
 BLACK_HOLE_RADIUS_BASE = 50
 BLACK_HOLE_GROWTH_FACTOR = 5 # Cuánto crece por nivel
-XP_BASE_REQUIREMENT = 500    # XP necesaria para nivel 1->2
+XP_BASE_REQUIREMENT = 300    # XP necesaria para nivel 1->2 (Reducido de 500 para feedback más rápido)
 XP_SCALING_FACTOR = 1.5      # Multiplicador de XP por nivel
 
 # --- Configuración de Spawns ---
@@ -54,25 +54,28 @@ SPAWN_DISTANCE_MIN = 150
 SPAWN_DISTANCE_MAX = 400
 
 # --- Sistema de Mejoras (Tienda) ---
+# Balanceo de Economía:
+# - Costes iniciales ajustados para ser alcanzables en 1-2 runs.
+# - Multiplicadores ajustados para que no se vuelva imposible demasiado rápido.
 UPGRADES = {
     "damage": {
         "name": "Fuerza de Marea",
         "category": "asteroid",
         "parent": None,
         "tree_pos": (0, 0),
-        "base_cost": 10,
-        "cost_multiplier": 1.5,
+        "base_cost": 40,       # Coste inicial accesible
+        "cost_multiplier": 1.4, # Escalado moderado
         "description": "Aumenta el daño por tick",
         "base_value": BASE_DAMAGE,
-        "increment": 2.0 # +2 daño
+        "increment": 3.0       # +3 daño (Impacto notable)
     },
     "radius": {
         "name": "Horizonte",
         "category": "blackhole",
         "parent": None,
         "tree_pos": (0, 0),
-        "base_cost": 10,
-        "cost_multiplier": 1.6,
+        "base_cost": 60,
+        "cost_multiplier": 1.5,
         "description": "Aumenta el radio de acción",
         "base_value": CURSOR_RADIUS,
         "increment": 5 # +5 pixels
@@ -82,8 +85,8 @@ UPGRADES = {
         "category": "blackhole",
         "parent": "radius",
         "tree_pos": (1, 0),
-        "base_cost": 200,
-        "cost_multiplier": 1.4,
+        "base_cost": 150,      # Caro pero valioso
+        "cost_multiplier": 1.5,
         "description": "Probabilidad de +1s al destruir",
         "base_value": 0.0, # 0% probabilidad base
         "increment": 0.05 # +5% probabilidad por nivel
@@ -93,20 +96,20 @@ UPGRADES = {
         "category": "asteroid",
         "parent": "damage",
         "tree_pos": (1, 0.8), # Un poco hacia abajo
-        "base_cost": 10,
-        "cost_multiplier": 1.8,
+        "base_cost": 80,       # Inversión media
+        "cost_multiplier": 1.6,
         "description": "Más cuerpos celestes",
-        "base_value": 10, # Valor inicial de bodies_per_level
-        "increment": 1 # +1 cuerpo maximo
+        "base_value": 12,      # Empezamos con 12 cuerpos (antes 10)
+        "increment": 2         # +2 cuerpos (antes +1, para que se note más)
     },
     "mass": {
         "name": "Nucleosíntesis",
         "category": "asteroid",
         "parent": "damage",
         "tree_pos": (1, -0.8), # Un poco hacia arriba
-        "base_cost": 10,
-        "cost_multiplier": 1.5,
-        "description": "Aumenta el nivel de los cuerpos",
+        "base_cost": 250,      # Gatekeeper de contenido (Nuevos niveles)
+        "cost_multiplier": 2.0, # Escala rápido
+        "description": "Desbloquea cuerpos de mayor nivel",
         "base_value": 0,
         "increment": 1 # +1 nivel
     },
@@ -115,20 +118,20 @@ UPGRADES = {
         "category": "unique",
         "parent": None,
         "tree_pos": (0, 0),
-        "base_cost": 500, # Coste alto por ser única
-        "cost_multiplier": 1.0, # No escala
+        "base_cost": 500, # Meta a largo plazo
+        "cost_multiplier": 1.0,
         "description": "Recupera oleada al subir nivel",
         "base_value": 0.0,
-        "increment": 1.0, # 100% refill (booleano en la práctica)
-        "max_level": 1 # Solo se puede comprar una vez
+        "increment": 1.0,
+        "max_level": 1
     },
     "fission": {
         "name": "Fisión",
         "category": "asteroid",
         "parent": "spawn_rate",
-        "tree_pos": (2, 0.8), # Sigue la línea de spawn_rate
-        "base_cost": 10,
-        "cost_multiplier": 1.6,
+        "tree_pos": (2, 0.8),
+        "base_cost": 200,
+        "cost_multiplier": 1.5,
         "description": "Probabilidad de dividir al destruir",
         "base_value": 0.0,
         "increment": 0.1 # +10% probabilidad

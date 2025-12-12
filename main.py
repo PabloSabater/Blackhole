@@ -6,7 +6,11 @@ from game_state import GameManager, GameState
 def main():
     # Inicialización de Pygame
     pygame.init()
-    screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+    
+    # Flags de pantalla: Doble Buffer y VSync para evitar flickering/tearing
+    flags = pygame.DOUBLEBUF
+    screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), flags, vsync=1)
+    
     pygame.display.set_caption(TITLE)
     clock = pygame.time.Clock()
     
