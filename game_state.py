@@ -16,6 +16,7 @@ class GameState(Enum):
     TRANSITION_TO_SHOP = 7    # Transición a tienda
     TRANSITION_FROM_SHOP = 8  # Transición desde tienda
     TRANSITION_FROM_MENU = 9  # Transición desde menú
+    TRANSITION_TO_MENU = 10   # Transición hacia menú
 
 class GameManager:
     def __init__(self):
@@ -58,6 +59,8 @@ class GameManager:
         self.mass_bonus = 0
         self.resonance_pct = 0.0
         self.fission_chance = 0.0
+        self.critical_chance = 0.0
+        self.critical_damage_multiplier = 1.5
         
         # Variables de Transición
         self.shop_transition_radius = 0
@@ -131,6 +134,13 @@ class GameManager:
         
         # Fisión (Dividir)
         fis_data = UPGRADES["fission"]
+        # Críticos
+        crit_chance_data = UPGRADES["critical_chance"]
+        self.critical_chance = crit_chance_data["base_value"] + (self.upgrades["critical_chance"] * crit_chance_data["increment"])
+        
+        crit_dmg_data = UPGRADES["critical_damage"]
+        self.critical_damage_multiplier = crit_dmg_data["base_value"] + (self.upgrades["critical_damage"] * crit_dmg_data["increment"])
+
         self.fission_chance = fis_data["base_value"] + (self.upgrades["fission"] * fis_data["increment"])
 
     def update(self):
@@ -138,6 +148,8 @@ class GameManager:
             self._update_menu()
         elif self.state == GameState.TRANSITION_FROM_MENU:
             self._update_transition_from_menu()
+        elif self.state == GameState.TRANSITION_TO_MENU:
+            self._update_transition_to_menu()
         elif self.state == GameState.PLAYING:
             self._update_playing()
         elif self.state == GameState.TRANSITION_TO_SUMMARY:
@@ -169,6 +181,15 @@ class GameManager:
         if self.menu_anim_offset > 400:
             self.state = GameState.PLAYING
             self.menu_anim_offset = 0
+
+    def _update_transition_to_menu(self):
+        self.black_hole.update()
+        # Animación: Disminuir offset
+        self.menu_anim_offset -= 15
+        
+        if self.menu_anim_offset <= 0:
+            self.menu_anim_offset = 0
+            self.state = GameState.MENU
 
     def _update_transition_to_shop(self):
         self.shop_transition_radius += self.transition_speed
@@ -252,11 +273,13 @@ class GameManager:
 
         if self.state == GameState.SUMMARY and event.type == pygame.MOUSEBUTTONDOWN:
             if event.button == 1: # Click izquierdo
-                restart_rect, shop_rect = self._get_summary_buttons_rects()
+                restart_rect, shop_rect, menu_rect = self._get_summary_buttons_rects()
                 if restart_rect.collidepoint(event.pos):
                     self.reset_run()
                 elif shop_rect.collidepoint(event.pos):
                     self.state = GameState.TRANSITION_TO_SHOP
+                elif menu_rect.collidepoint(event.pos):
+                    self.return_to_menu()
 
         if self.state == GameState.PROGRESSION and event.type == pygame.MOUSEBUTTONDOWN:
             if event.button == 1: # Click izquierdo
@@ -328,16 +351,25 @@ class GameManager:
                 # Nivel base 1 + bonus de masa
                 max_unlocked_level = min(6, 1 + int(self.mass_bonus))
                 
-                # Spawneamos un nivel aleatorio entre 1 y el máximo desbloqueado
-                level = random.randint(1, max_unlocked_level)
+                # Spawneamos un nivel aleatorio entre el mínimo (basado en agujero) y el máximo desbloqueado
+                # Mínimo: Nivel del agujero - 1 (pero al menos 1)
+                min_level = max(1, self.black_hole.level - 1)
+                
+                # Aseguramos que min_level no supere a max_unlocked_level
+                # Si el agujero es nivel 5 pero solo desbloqueaste asteroides nivel 2, 
+                # saldrán asteroides nivel 2 (el máximo posible)
+                real_min_level = min(min_level, max_unlocked_level)
+                
+                level = random.randint(real_min_level, max_unlocked_level)
                 
                 new_body = CelestialBody(level=level)
                 
                 # Calcular distancia de spawn dinámica
                 # Mínimo: Radio del agujero negro + margen (para no nacer dentro)
                 # Máximo: Escalado con el nivel del agujero negro para llenar más pantalla al hacer zoom out
-                min_spawn = max(SPAWN_DISTANCE_MIN, self.black_hole.radius + 50)
-                max_spawn = SPAWN_DISTANCE_MAX + (self.black_hole.level * 50)
+                # AUMENTADO: El rango máximo crece más rápido para compensar el crecimiento del agujero
+                min_spawn = max(SPAWN_DISTANCE_MIN, self.black_hole.radius + 80) # Margen aumentado a 80
+                max_spawn = SPAWN_DISTANCE_MAX + (self.black_hole.level * 100)   # Crecimiento duplicado (50 -> 100)
                 
                 new_body.set_spawn_position(min_spawn, max_spawn)
                 
@@ -365,6 +397,29 @@ class GameManager:
         
         for wave in self.shockwaves:
             wave.update()
+            
+            # Lógica de Empuje de Onda de Choque
+            # Si la onda alcanza a un cuerpo, lo empuja hacia afuera
+            for body in self.bodies:
+                if wave.id not in body.hit_shockwaves:
+                    # Si la onda ha alcanzado o superado el radio orbital del cuerpo
+                    # Usamos un margen para que no empuje cosas que ya están muy lejos si la onda nace lejos (aunque siempre nace en el centro)
+                    if wave.radius >= body.orbit_radius - body.current_size:
+                        # ¡IMPACTO!
+                        body.hit_shockwaves.add(wave.id)
+                        
+                        # Calcular fuerza de empuje
+                        # Queremos que los aleje lo suficiente para compensar el crecimiento del agujero
+                        # Y un poco más para dar sensación de impacto
+                        # REDUCIDO: Antes era 15 + level*2, ahora es mucho más suave
+                        base_force = 5.0 + (self.black_hole.level * 1.5)
+                        
+                        # Atenuación por distancia: Cuanto más lejos, menos empuje
+                        # Usamos 800 como distancia de referencia donde el empuje es mínimo
+                        distance_factor = max(0.1, 1.0 - (body.orbit_radius / 800))
+                        
+                        body.push_velocity = base_force * distance_factor
+                        
         self.shockwaves = [w for w in self.shockwaves if w.active]
 
         # Actualizar Debris
@@ -404,12 +459,23 @@ class GameManager:
             
             if dist_sq < collision_radius * collision_radius:
                 # Está dentro del área (o tocándola)
-                destroyed, actual_damage = body.take_damage(self.current_damage)
                 
-                # Feedback visual de daño (mostramos el daño real, redondeado a 1 decimal si es pequeño)
-                # Eliminamos la probabilidad para mostrar TODOS los ticks de daño
+                # Cálculo de Daño (Crítico)
+                damage_to_deal = self.current_damage
+                is_crit = False
+                if random.random() < self.critical_chance:
+                    damage_to_deal *= self.critical_damage_multiplier
+                    is_crit = True
+                
+                destroyed, actual_damage = body.take_damage(damage_to_deal)
+                
+                # Feedback visual de daño
                 dmg_str = f"{actual_damage:.1f}" if actual_damage < 10 else str(int(actual_damage))
-                self.floating_texts.append(FloatingText(body.x, body.y, dmg_str))
+                if is_crit:
+                    dmg_str += "!"
+                    self.floating_texts.append(FloatingText(body.x, body.y, dmg_str, COLOR_CRIT_TEXT, size=28))
+                else:
+                    self.floating_texts.append(FloatingText(body.x, body.y, dmg_str))
                 
                 if destroyed:
                     bodies_to_remove.append(body)
@@ -457,7 +523,7 @@ class GameManager:
                     # Más debris para cuerpos más grandes
                     num_debris = int(random.randint(3, 6) * body.size_multiplier)
                     for _ in range(num_debris):
-                        self.debris_list.append(Debris(body.x, body.y, body.color, body.orbit_radius, body.angle))
+                        self.debris_list.append(Debris(body.x, body.y, body.dark_color, body.orbit_radius, body.angle))
 
         # Eliminar cuerpos destruidos
         for body in bodies_to_remove:
@@ -526,7 +592,7 @@ class GameManager:
         self._draw_ui(surface)
         
         # Pantallas especiales
-        if self.state == GameState.MENU or self.state == GameState.TRANSITION_FROM_MENU:
+        if self.state == GameState.MENU or self.state == GameState.TRANSITION_FROM_MENU or self.state == GameState.TRANSITION_TO_MENU:
             self._draw_menu(surface)
         elif self.state == GameState.SUMMARY:
             self._draw_summary(surface)
@@ -573,6 +639,27 @@ class GameManager:
         """Termina la run desde el menú de pausa"""
         self.state = GameState.TRANSITION_TO_SUMMARY
         self.black_hole.expand_to_screen()
+
+    def return_to_menu(self):
+        """Vuelve al menú principal desde pausa"""
+        self.state = GameState.TRANSITION_TO_MENU
+        self.menu_anim_offset = 400 # Empezar fuera de pantalla
+        
+        # Resetear estado de juego
+        self.time_remaining = GAME_DURATION
+        self.money_earned = 0
+        self.bodies = []
+        self.bodies_destroyed = {level: 0 for level in MASS_COLORS.keys()}
+        self.current_xp = 0
+        self.xp_to_next_level = XP_BASE_REQUIREMENT
+        self.shockwaves = []
+        self.floating_texts = []
+        self.debris_list = []
+        self.spawned_count = 0
+        
+        # Resetear agujero negro
+        self.black_hole.shrink_to_game()
+        # Eliminamos la linea que forzaba el radio para permitir la animación
 
     def _draw_pause_overlay(self, surface):
         # Efecto VHS: Scanlines y Ruido
@@ -649,8 +736,9 @@ class GameManager:
         # Bajamos los botones para dejar espacio a las estadísticas
         restart_rect = pygame.Rect(center_x - button_width // 2, center_y + 160, button_width, button_height)
         shop_rect = pygame.Rect(center_x - button_width // 2, center_y + 230, button_width, button_height)
+        menu_rect = pygame.Rect(center_x - button_width // 2, center_y + 300, button_width, button_height)
         
-        return restart_rect, shop_rect
+        return restart_rect, shop_rect, menu_rect
 
     def _draw_summary(self, surface):
         # Pantalla de Resumen (Fondo Negro = Agujero Negro Gigante)
@@ -691,7 +779,7 @@ class GameManager:
                 current_y += line_height
         
         # Botones
-        restart_rect, shop_rect = self._get_summary_buttons_rects()
+        restart_rect, shop_rect, menu_rect = self._get_summary_buttons_rects()
         mx, my = pygame.mouse.get_pos()
         
         # Botón Reiniciar
@@ -711,6 +799,15 @@ class GameManager:
         
         shop_text = self.font_btn.render("Mejoras (M)", True, COLOR_XP_BAR_FILL)
         surface.blit(shop_text, (shop_rect.centerx - shop_text.get_width()//2, shop_rect.centery - shop_text.get_height()//2))
+
+        # Botón Menu Principal
+        is_hover_menu = menu_rect.collidepoint(mx, my)
+        color_menu_bg = (60, 20, 20) if not is_hover_menu else (100, 40, 40) # Rojo oscuro
+        pygame.draw.rect(surface, color_menu_bg, menu_rect, border_radius=12)
+        pygame.draw.rect(surface, (200, 100, 100), menu_rect, width=2, border_radius=12)
+        
+        menu_text = self.font_btn.render("Menu Principal", True, (200, 100, 100))
+        surface.blit(menu_text, (menu_rect.centerx - menu_text.get_width()//2, menu_rect.centery - menu_text.get_height()//2))
 
     def _draw_progression(self, surface):
         # Fondo Beige (cubriendo el agujero negro gigante)

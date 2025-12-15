@@ -20,6 +20,7 @@ COLOR_XP_BAR_FILL = (100, 200, 200) # Relleno barra XP (Cyan pastel)
 COLOR_DAMAGE_TEXT = (255, 100, 100) # Rojo pastel para daño
 COLOR_MONEY_TEXT = (100, 200, 100)  # Verde pastel para dinero
 COLOR_TIME_TEXT = (100, 200, 255)   # Azul pastel para tiempo extra
+COLOR_CRIT_TEXT = (255, 200, 100)   # Naranja/Amarillo para críticos
 COLOR_SHOCKWAVE = (255, 255, 255)   # Blanco para onda expansiva
 
 # Jerarquía de Masas (Niveles)
@@ -89,7 +90,8 @@ UPGRADES = {
         "cost_multiplier": 1.5,
         "description": "Probabilidad de +1s al destruir",
         "base_value": 0.0, # 0% probabilidad base
-        "increment": 0.05 # +5% probabilidad por nivel
+        "increment": 0.05, # +5% probabilidad por nivel
+        "max_level": 5
     },
     "spawn_rate": {
         "name": "Atracción",
@@ -134,6 +136,29 @@ UPGRADES = {
         "cost_multiplier": 1.5,
         "description": "Probabilidad de dividir al destruir",
         "base_value": 0.0,
-        "increment": 0.1 # +10% probabilidad
+        "increment": 0.1, # +10% probabilidad
+        "max_level": 5
+    },
+    "critical_chance": {
+        "name": "Singularidad Crítica",
+        "category": "asteroid",
+        "parent": "mass",
+        "tree_pos": (2, -0.8),
+        "base_cost": 150,
+        "cost_multiplier": 1.5,
+        "description": "Probabilidad de daño crítico",
+        "base_value": 0.0,
+        "increment": 0.05 # +5% probabilidad
+    },
+    "critical_damage": {
+        "name": "Colapso Gravitacional",
+        "category": "asteroid",
+        "parent": "critical_chance",
+        "tree_pos": (3, -0.8),
+        "base_cost": 200,
+        "cost_multiplier": 1.5,
+        "description": "Aumenta el daño crítico",
+        "base_value": 1.5, # 150% base
+        "increment": 0.5 # +50% daño
     }
 }

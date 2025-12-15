@@ -54,9 +54,16 @@ class CelestialBody:
         
         self.points = self._generate_shape()
         
+        # Color oscuro pre-calculado para debris y bordes
+        self.dark_color = tuple(max(0, c - 100) for c in self.color)
+        
         # Coordenadas cartesianas para colisiones (se actualizan en update)
         self.x = 0
         self.y = 0
+        
+        # Física de Empuje (Shockwave)
+        self.push_velocity = 0
+        self.hit_shockwaves = set() # IDs de shockwaves que ya han golpeado a este cuerpo
 
     def set_spawn_position(self, min_dist, max_dist):
         """Asigna una posición orbital válida basada en el radio del agujero negro"""
@@ -65,31 +72,53 @@ class CelestialBody:
         self.angular_speed = (100 / self.orbit_radius) * self.angular_speed_base
 
     def _generate_shape(self):
-        self.spawn_anim_duration = int(30 + 20 * self.size_multiplier)
-        
-        self.points = self._generate_shape()
-        
-        # Coordenadas cartesianas para colisiones (se actualizan en update)
-        self.x = 0
-        self.y = 0
-
-    def _generate_shape(self):
-        """Genera un polígono irregular para parecer un asteroide"""
+        """Genera un polígono irregular suavizado para parecer un asteroide"""
+        # 1. Generar vértices base (picos)
         num_points = random.randint(5, 9)
-        points = []
+        base_points = []
         for i in range(num_points):
-            # Ángulo para este vértice
             theta = (i / num_points) * 2 * math.pi
-            # Variación aleatoria en el radio para que sea irregular
-            # Usamos 1.0 como base, escalaremos al dibujar
             r = random.uniform(0.8, 1.2)
             px = r * math.cos(theta)
             py = r * math.sin(theta)
-            points.append((px, py))
+            base_points.append((px, py))
+            
+        # 2. Suavizar usando el algoritmo de Chaikin (Corner Cutting)
+        # Esto redondea las esquinas iterativamente
+        points = base_points
+        iterations = 2 # 2 iteraciones es suficiente para que se vea suave pero irregular
+        
+        for _ in range(iterations):
+            new_points = []
+            for i in range(len(points)):
+                p0 = points[i]
+                p1 = points[(i + 1) % len(points)]
+                
+                # Crear dos nuevos puntos entre p0 y p1 (al 25% y 75%)
+                # Q = 0.75*P0 + 0.25*P1
+                # R = 0.25*P0 + 0.75*P1
+                
+                qx = 0.75 * p0[0] + 0.25 * p1[0]
+                qy = 0.75 * p0[1] + 0.25 * p1[1]
+                
+                rx = 0.25 * p0[0] + 0.75 * p1[0]
+                ry = 0.25 * p0[1] + 0.75 * p1[1]
+                
+                new_points.append((qx, qy))
+                new_points.append((rx, ry))
+            points = new_points
+            
         return points
 
     def update(self):
         """Actualiza la posición basada en coordenadas polares"""
+        # Aplicar empuje radial (si lo hay)
+        if abs(self.push_velocity) > 0.1:
+            self.orbit_radius += self.push_velocity
+            self.push_velocity *= 0.9 # Fricción fuerte para que se detenga rápido
+        else:
+            self.push_velocity = 0
+            
         self.angle += self.angular_speed
         
         # Animación de entrada (Pop-in con rebote EXAGERADO)
@@ -273,12 +302,13 @@ class BlackHole:
 
 class Shockwave:
     def __init__(self, x, y):
+        self.id = random.randint(0, 1000000) # ID único para evitar golpes múltiples
         self.x = x
         self.y = y
         self.radius = 10
         self.max_radius = SCREEN_WIDTH  # Cubrir pantalla
         self.alpha = 255
-        self.speed = 20
+        self.speed = 25 # Más rápida para que el golpe se sienta potente
         self.active = True
 
     def update(self):
@@ -330,14 +360,14 @@ class Debris:
         pygame.draw.circle(surface, self.color, (int(screen_x), int(screen_y)), screen_size)
 
 class FloatingText:
-    def __init__(self, x, y, text, color=COLOR_DAMAGE_TEXT):
+    def __init__(self, x, y, text, color=COLOR_DAMAGE_TEXT, size=16):
         self.x = x
         self.y = y
         self.text = str(text)
         self.color = color
         self.life = 60 # frames
         self.alpha = 255
-        self.font = pygame.font.SysFont("Arial", 16, bold=True)
+        self.font = pygame.font.SysFont("Arial", size, bold=True)
 
     def update(self):
         self.y -= 1 # Subir
