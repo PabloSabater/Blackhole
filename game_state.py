@@ -352,8 +352,8 @@ class GameManager:
                 max_unlocked_level = min(6, 1 + int(self.mass_bonus))
                 
                 # Spawneamos un nivel aleatorio entre el mínimo (basado en agujero) y el máximo desbloqueado
-                # Mínimo: Nivel del agujero - 1 (pero al menos 1)
-                min_level = max(1, self.black_hole.level - 1)
+                # Mínimo: Nivel del agujero - 3
+                min_level = max(1, self.black_hole.level - 3)
                 
                 # Aseguramos que min_level no supere a max_unlocked_level
                 # Si el agujero es nivel 5 pero solo desbloqueaste asteroides nivel 2, 
