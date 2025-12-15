@@ -291,13 +291,51 @@ class BlackHole:
         # Radio escalado
         screen_radius = self.radius * zoom
         
-        # Efecto de pulsación suave
-        pulse = math.sin(self.pulse_timer) * 2 * zoom
+        # --- Efecto de Aura / Respiración ---
+        # Usamos una superficie temporal para transparencias
+        # El tamaño debe ser suficiente para el aura más grande
+        max_aura_offset = 250 * zoom # Aumentado aún más para la capa exterior lejana
+        aura_surface_size = int((screen_radius + max_aura_offset) * 2)
+        aura_surface = pygame.Surface((aura_surface_size, aura_surface_size), pygame.SRCALPHA)
+        aura_center = (aura_surface_size // 2, aura_surface_size // 2)
         
-        # Anillo de acreción (decorativo)
-        pygame.draw.circle(surface, (50, 50, 50), (screen_x, screen_y), int(screen_radius + (5 * zoom) + pulse), 2)
+        # Factor de respiración (0.0 a 1.0)
+        # Usamos pulse_timer que ya se actualiza en update()
+        # Frecuencia reducida drásticamente (0.2 en vez de 1.5) para un efecto más solemne
+        breath = (math.sin(self.pulse_timer * 0.2) + 1) / 2 
         
-        # Cuerpo principal
+        # Distancias personalizadas para cada capa (progresión no lineal)
+        layer_distances = {
+            1: 25,   # Primera capa: cercana
+            2: 80,   # Segunda capa: media distancia
+            3: 180   # Tercera capa: muy alejada (el gran halo exterior)
+        }
+
+        # 3 Capas de aura, de la más grande (exterior) a la más pequeña (interior)
+        for i in range(3, 0, -1): # 3, 2, 1
+            # Distancia desde el borde del agujero negro
+            base_dist = layer_distances[i] * zoom
+            # La respiración escala con la distancia (más movimiento en el exterior)
+            breath_dist = (layer_distances[i] * 0.25) * zoom * breath 
+            current_radius = screen_radius + base_dist + breath_dist
+            
+            # Color y Alpha
+            # Queremos que sea "menos oscuro" (más gris) hacia afuera
+            gray_level = 25 + (i * 15) # Gradiente de gris
+            
+            # Alpha: Más transparente hacia afuera
+            base_alpha = 80 - (i * 15) # 65, 50, 35
+            # Modulamos alpha con la respiración
+            current_alpha = int(base_alpha * (0.7 + 0.3 * breath))
+            
+            color = (gray_level, gray_level, gray_level, current_alpha)
+            
+            pygame.draw.circle(aura_surface, color, aura_center, int(current_radius))
+            
+        # Dibujar el aura en la pantalla principal
+        surface.blit(aura_surface, (screen_x - aura_center[0], screen_y - aura_center[1]))
+        
+        # Cuerpo principal (Agujero Negro)
         pygame.draw.circle(surface, COLOR_BLACK_HOLE, (screen_x, screen_y), int(screen_radius))
 
 class Shockwave:
