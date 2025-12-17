@@ -252,22 +252,8 @@ class Asteroid(CelestialBody):
 
 class Planet(CelestialBody):
     def _init_stats(self):
-        # Colores de Planetas (Más vivos y saturados que los asteroides)
-        # Nivel 1: Gaseoso (Rosa/Morado)
-        # Nivel 2: Habitable (Azul/Verde)
-        # Nivel 3: Volcánico (Rojo/Naranja)
-        # Nivel 4: Hielo (Cian/Blanco)
-        # Nivel 5: Metálico (Plata/Oro)
-        # Nivel 6: Exótico (Negro/Violeta)
-        PLANET_COLORS = {
-            1: (200, 100, 200),
-            2: (50, 200, 100),
-            3: (255, 80, 50),
-            4: (100, 255, 255),
-            5: (255, 215, 0),
-            6: (150, 0, 255)
-        }
-        self.color = PLANET_COLORS.get(self.level, (255, 255, 255))
+        # Usamos los mismos colores que los asteroides para mantener consistencia
+        self.color = MASS_COLORS.get(self.level, (255, 255, 255))
         
         # Los planetas son mucho más grandes y pesados
         self.size_multiplier = random.uniform(1.5, 3.0)
@@ -347,7 +333,38 @@ class Planet(CelestialBody):
         surface.blit(atmo_surf, (screen_x - atmo_surf_size//2, screen_y - atmo_surf_size//2))
         
         # 2. Planeta Base (Círculo)
-        pygame.draw.circle(surface, self.color, (screen_x, screen_y), int(screen_size))
+        # Usamos la misma técnica de clipping que los asteroides para la vida
+        
+        # Primero dibujamos la versión "muerta" (oscura) completa
+        pygame.draw.circle(surface, self.dark_color, (screen_x, screen_y), int(screen_size))
+        
+        # Luego dibujamos la versión "viva" recortada según la vida restante
+        if self.current_health > 0:
+            health_pct = max(0, self.current_health / self.max_health)
+            
+            # Calcular rectángulo de recorte
+            # La parte viva está abajo, así que recortamos desde arriba
+            # Altura total del círculo es 2 * screen_size
+            diameter = screen_size * 2
+            clip_top = (screen_y - screen_size) + (diameter * (1 - health_pct))
+            
+            # Guardar clip actual
+            old_clip = surface.get_clip()
+            
+            # Definir zona de dibujo (desde clip_top hacia abajo)
+            clip_rect = pygame.Rect(0, int(clip_top), SCREEN_WIDTH, int(SCREEN_HEIGHT - clip_top + 100))
+            
+            # Respetar clip existente
+            if old_clip:
+                clip_rect = clip_rect.clip(old_clip)
+            
+            surface.set_clip(clip_rect)
+            
+            # Dibujar planeta vivo
+            pygame.draw.circle(surface, self.color, (screen_x, screen_y), int(screen_size))
+            
+            # Restaurar clip
+            surface.set_clip(old_clip)
         
         # 3. Sombra (Efecto 3D simple)
         # Sombra en la parte inferior derecha (lejos de la "luz" del centro/agujero negro?)
@@ -357,18 +374,8 @@ class Planet(CelestialBody):
         # Dibujamos un círculo oscuro desplazado y recortamos (simulado con superposición)
         # Simplificación: Arco de sombra
         
-        # 4. Barra de Vida (Circular o superpuesta)
-        # Usamos la lógica de "daño visual" del padre: oscurecer
-        # Pero como es un planeta, quizás grietas?
-        # Por ahora, barra de vida clásica pequeña debajo
-        if self.current_health < self.max_health:
-            hp_pct = self.current_health / self.max_health
-            bar_w = 40 * zoom
-            bar_h = 4 * zoom
-            pygame.draw.rect(surface, (50, 0, 0), (screen_x - bar_w/2, screen_y + screen_size + 5, bar_w, bar_h))
-            pygame.draw.rect(surface, (0, 255, 0), (screen_x - bar_w/2, screen_y + screen_size + 5, bar_w * hp_pct, bar_h))
-            
-        return points
+        # 4. Borde (Opcional, para definir mejor)
+        pygame.draw.circle(surface, self.dark_color, (screen_x, screen_y), int(screen_size), 2)
 
 class BlackHole:
     def __init__(self):

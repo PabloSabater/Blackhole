@@ -244,10 +244,11 @@ class GameManager:
         branches = {
             "asteroid": {"angle": math.pi},
             "blackhole": {"angle": 0},
-            "unique": {"angle": -math.pi/2}
+            "unique": {"angle": -math.pi/2},
+            "planet": {"angle": math.pi/2}
         }
         
-        grouped_upgrades = {"asteroid": [], "blackhole": [], "unique": []}
+        grouped_upgrades = {"asteroid": [], "blackhole": [], "unique": [], "planet": []}
         for key, data in UPGRADES.items():
             cat = data.get("category", "asteroid")
             if cat in grouped_upgrades:
@@ -388,8 +389,9 @@ class GameManager:
                 
                 # Lógica de Spawning (Asteroides vs Planetas)
                 should_spawn_planet = False
-                if self.planets_unlocked:
-                    # 20% de probabilidad de spawnear un planeta si están desbloqueados
+                # Solo spawnean si están desbloqueados Y el agujero negro es nivel 5 o superior
+                if self.planets_unlocked and self.black_hole.level >= 5:
+                    # 20% de probabilidad de spawnear un planeta
                     if random.random() < 0.2:
                         should_spawn_planet = True
                 
@@ -1011,7 +1013,8 @@ class GameManager:
         branches = {
             "asteroid": {"angle": math.pi},
             "blackhole": {"angle": 0},
-            "unique": {"angle": -math.pi/2}
+            "unique": {"angle": -math.pi/2},
+            "planet": {"angle": math.pi/2}
         }
         branch_start_dist = 100
         
