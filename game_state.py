@@ -567,14 +567,21 @@ class GameManager:
         return self.current_zoom
 
     def draw(self, surface):
+        # Factor de energía para el aura (0.0 = Gravedad/Juego, 1.0 = Energía/Tienda)
+        energy_factor = 0.0
+        
         # Fondo Dinámico
         if self.state == GameState.PROGRESSION:
             surface.fill(COLOR_BACKGROUND_SHOP)
+            energy_factor = 1.0
+            
         elif self.state == GameState.TRANSITION_TO_PLAY:
             # Interpolación de Oscuro a Beige
             # Usamos el radio del agujero negro como proxy del progreso
             # Radio va de 25 (Shop) a 50 (Base)
-            progress = (self.black_hole.radius - 25) / (BLACK_HOLE_RADIUS_BASE - 25)
+            denom = (BLACK_HOLE_RADIUS_BASE - 25)
+            if denom == 0: denom = 1 # Evitar división por cero
+            progress = (self.black_hole.radius - 25) / denom
             progress = max(0, min(1, progress))
             
             # Lerp color
@@ -583,30 +590,34 @@ class GameManager:
             b = int(COLOR_BACKGROUND_SHOP[2] + (COLOR_BACKGROUND[2] - COLOR_BACKGROUND_SHOP[2]) * progress)
             surface.fill((r, g, b))
             
-            # Dibujar Starfield explotando (se desvanece con el progreso)
-            # Podemos hacer que el alpha baje a medida que el fondo se vuelve beige
-            # Como Starfield.draw no tiene alpha global, confiamos en que el beige tape las estrellas o que se salgan de pantalla
+            # Dibujar Starfield explotando
             self.starfield.draw(surface, black_hole_radius=self.black_hole.radius)
+            
+            # Interpolación del aura (Inverso al progreso: 1.0 -> 0.0)
+            energy_factor = 1.0 - progress
+            
         elif self.state == GameState.TRANSITION_TO_SHOP:
-             # Aquí el agujero negro cubre casi todo al principio, así que podemos poner el fondo oscuro directamente
-             # o hacer una interpolación inversa si se viera algo.
-             # Como venimos de Summary (Negro total), al encogerse revelará el fondo.
-             # Queremos que revele el fondo oscuro.
+             # Aquí el agujero negro cubre casi todo al principio
              surface.fill(COLOR_BACKGROUND_SHOP)
+             # Al ir entrando a la tienda, activamos el modo energía
+             # Podríamos interpolar, pero como viene de pantalla completa negra, 
+             # el cambio de color del aura (que está fuera de pantalla al inicio) no se nota tanto.
+             energy_factor = 1.0
+             
         else:
             surface.fill(COLOR_BACKGROUND)
+            energy_factor = 0.0
         
         # Calcular Zoom
         zoom = self.get_zoom()
         
         # Determinar orden de dibujado
-        # Si el agujero negro se está expandiendo o ya cubrió la pantalla, 
-        # debe dibujarse ENCIMA de los cuerpos para "tragárselos" visualmente.
-        # También en las transiciones de tienda, el agujero negro (Summary) está debajo
         draw_black_hole_on_top = self.state in [GameState.TRANSITION_TO_SUMMARY, GameState.SUMMARY, GameState.TRANSITION_TO_SHOP, GameState.TRANSITION_FROM_SHOP, GameState.PROGRESSION]
         
         if not draw_black_hole_on_top:
-            self.black_hole.draw(surface, zoom)
+            # Dibujado normal (Juego y Transición a Juego)
+            # Pasamos el energy_factor calculado
+            self.black_hole.draw(surface, zoom, energy_factor=energy_factor)
         
         # Dibujar Debris (detrás de los cuerpos pero delante del agujero si es normal)
         for debris in self.debris_list:
@@ -620,10 +631,12 @@ class GameManager:
             if self.state == GameState.TRANSITION_TO_SUMMARY:
                 self.black_hole.draw(surface, 1.0)
             elif self.state == GameState.PROGRESSION:
-                # En el menú de mejoras, el agujero negro está en el centro (sin zoom de juego)
-                self.black_hole.draw(surface, 1.0)
+                # En el menú de mejoras, el agujero negro está en el centro
+                self.black_hole.draw(surface, 1.0, energy_factor=1.0)
+            elif self.state == GameState.TRANSITION_TO_SHOP:
+                self.black_hole.draw(surface, 1.0, energy_factor=1.0)
             else:
-                self.black_hole.draw(surface, zoom)
+                self.black_hole.draw(surface, zoom, energy_factor=energy_factor)
             
         # Efectos visuales (detrás del cursor)
         for wave in self.shockwaves:
@@ -653,7 +666,9 @@ class GameManager:
             self.starfield.draw(surface, black_hole_radius=self.black_hole.radius)
             
             # Dibujar círculo de transición (Agujero negro encogiéndose)
-            # Ya se dibuja en draw() principal
+            # Ya se dibuja en draw() principal, pero queremos forzar el modo energía si estamos cerca del final
+            # O simplemente dejar que el draw principal lo maneje (usará modo normal por defecto)
+            # Para suavidad, podríamos interpolar, pero por ahora dejemos que cambie al llegar a PROGRESSION
         
         if self.state == GameState.PAUSED:
             self._draw_pause_overlay(surface)

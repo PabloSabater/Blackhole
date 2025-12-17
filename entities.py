@@ -301,10 +301,10 @@ class BlackHole:
         self.target_radius = BLACK_HOLE_RADIUS_BASE
         self.anim_speed = 10.0 # Contracción rápida
 
-    def draw(self, surface, zoom=1.0):
+    def draw(self, surface, zoom=1.0, energy_factor=0.0):
         center_x, center_y = SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2
         
-        # Posición en pantalla (aunque el agujero suele estar en el centro, aplicamos zoom por si acaso se mueve)
+        # Posición en pantalla
         screen_x = center_x + (self.x - center_x) * zoom
         screen_y = center_y + (self.y - center_y) * zoom
         
@@ -312,43 +312,65 @@ class BlackHole:
         screen_radius = self.radius * zoom
         
         # --- Efecto de Aura / Respiración ---
-        # Usamos una superficie temporal para transparencias
-        # El tamaño debe ser suficiente para el aura más grande
-        max_aura_offset = 250 * zoom # Aumentado aún más para la capa exterior lejana
+        
+        # Interpolación de parámetros entre Modo Gravedad (0.0) y Modo Energía (1.0)
+        
+        # 1. Calcular distancias base para cada capa
+        # Modo Energía: Escala con el radio visual
+        scale_factor = max(0.5, screen_radius / 50.0)
+        dists_energy = [10 * scale_factor, 25 * scale_factor, 50 * scale_factor]
+        
+        # Modo Gravedad: Escala con el zoom
+        dists_gravity = [25 * zoom, 80 * zoom, 180 * zoom]
+        
+        # 2. Calcular colores base
+        colors_energy = [(100, 200, 255), (50, 100, 200), (20, 20, 100)]
+        colors_gravity = [(40, 40, 40), (55, 55, 55), (70, 70, 70)]
+        
+        # 3. Calcular Alphas base
+        alphas_energy = [80, 60, 40]
+        alphas_gravity = [65, 50, 35]
+        
+        # 4. Calcular Offset Máximo (para el tamaño de la superficie)
+        offset_energy = 60 * scale_factor
+        offset_gravity = 250 * zoom
+        max_aura_offset = offset_gravity * (1 - energy_factor) + offset_energy * energy_factor
+
         aura_surface_size = int((screen_radius + max_aura_offset) * 2)
+        # Asegurar tamaño mínimo
+        if aura_surface_size < 1: aura_surface_size = 1
+        
         aura_surface = pygame.Surface((aura_surface_size, aura_surface_size), pygame.SRCALPHA)
         aura_center = (aura_surface_size // 2, aura_surface_size // 2)
         
-        # Factor de respiración (0.0 a 1.0)
-        # Usamos pulse_timer que ya se actualiza en update()
-        # Frecuencia reducida drásticamente (0.2 en vez de 1.5) para un efecto más solemne
+        # Factor de respiración
         breath = (math.sin(self.pulse_timer * 0.2) + 1) / 2 
         
-        # Distancias personalizadas para cada capa (progresión no lineal)
-        layer_distances = {
-            1: 25,   # Primera capa: cercana
-            2: 80,   # Segunda capa: media distancia
-            3: 180   # Tercera capa: muy alejada (el gran halo exterior)
-        }
-
-        # 3 Capas de aura, de la más grande (exterior) a la más pequeña (interior)
-        for i in range(3, 0, -1): # 3, 2, 1
-            # Distancia desde el borde del agujero negro
-            base_dist = layer_distances[i] * zoom
-            # La respiración escala con la distancia (más movimiento en el exterior)
-            breath_dist = (layer_distances[i] * 0.25) * zoom * breath 
-            current_radius = screen_radius + base_dist + breath_dist
+        # 3 Capas de aura
+        for i in range(2, -1, -1): # 2, 1, 0 (Indices de listas)
+            # Interpolación Lineal (Lerp) de distancia
+            dist = dists_gravity[i] * (1 - energy_factor) + dists_energy[i] * energy_factor
             
-            # Color y Alpha
-            # Queremos que sea "menos oscuro" (más gris) hacia afuera
-            gray_level = 25 + (i * 15) # Gradiente de gris
+            # La respiración escala con la distancia
+            breath_dist = (dist * 0.25) * breath 
+            current_radius = screen_radius + dist + breath_dist
             
-            # Alpha: Más transparente hacia afuera
-            base_alpha = 80 - (i * 15) # 65, 50, 35
+            # Lerp Color
+            c_g = colors_gravity[i]
+            c_e = colors_energy[i]
+            r = int(c_g[0] + (c_e[0] - c_g[0]) * energy_factor)
+            g = int(c_g[1] + (c_e[1] - c_g[1]) * energy_factor)
+            b = int(c_g[2] + (c_e[2] - c_g[2]) * energy_factor)
+            
+            # Lerp Alpha
+            a_g = alphas_gravity[i]
+            a_e = alphas_energy[i]
+            base_alpha = a_g * (1 - energy_factor) + a_e * energy_factor
+            
             # Modulamos alpha con la respiración
             current_alpha = int(base_alpha * (0.7 + 0.3 * breath))
             
-            color = (gray_level, gray_level, gray_level, current_alpha)
+            color = (r, g, b, current_alpha)
             
             pygame.draw.circle(aura_surface, color, aura_center, int(current_radius))
             
