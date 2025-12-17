@@ -486,4 +486,140 @@ class PlayerCursor:
         # pygame.draw.circle(surface, (0, 0, 0), (self.x, self.y), 4)
         # pygame.draw.circle(surface, (255, 255, 255), (self.x, self.y), 2)
 
+class Starfield:
+    def __init__(self):
+        self.stars = []
+        center_x, center_y = SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2
+        
+        # Crear 3 capas de estrellas
+        # Capa 0: Fondo (Lentas, pequeñas, muchas)
+        # Capa 1: Medio (Velocidad media)
+        # Capa 2: Frente (Rápidas, menos cantidad)
+        
+        counts = [200, 100, 50]
+        speeds = [0.0002, 0.0005, 0.001] # Velocidad angular
+        colors = [(100, 100, 120), (150, 150, 180), (200, 200, 255)]
+        sizes = [1, 2, 2]
+        
+        for layer in range(3):
+            for _ in range(counts[layer]):
+                # Generar en coordenadas polares para facilitar rotación
+                angle = random.uniform(0, 2 * math.pi)
+                # Radio hasta la esquina para cubrir todo al rotar
+                max_radius = math.sqrt(center_x**2 + center_y**2) + 50
+                radius = random.uniform(0, max_radius)
+                
+                self.stars.append({
+                    'layer': layer,
+                    'angle': angle,
+                    'base_radius': radius, # Guardar radio original
+                    'radius': radius,
+                    'speed': speeds[layer],
+                    'color': colors[layer],
+                    'size': sizes[layer],
+                    'twinkle_offset': random.uniform(0, 2*math.pi),
+                    'radial_speed': 0 # Velocidad de expansión
+                })
+        
+        self.exploding = False
+        self.imploding = False
+
+    def trigger_explosion(self):
+        """Inicia el efecto de warp/explosión (Salida)"""
+        self.exploding = True
+        self.imploding = False
+        for star in self.stars:
+            # Velocidad basada en la capa (más cerca = más rápido)
+            # REDUCIDO: Velocidad inicial mucho más baja para que se vea la aceleración
+            star['radial_speed'] = 2 + (star['layer'] * 2)
+
+    def trigger_implosion(self):
+        """Inicia el efecto de warp inverso (Entrada)"""
+        self.imploding = True
+        self.exploding = False
+        center_x, center_y = SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2
+        max_dist = math.sqrt(center_x**2 + center_y**2) + 200
+        
+        for star in self.stars:
+            # Empezar lejos
+            star['radius'] = star['base_radius'] + max_dist
+            # Velocidad negativa (hacia adentro)
+            # Más rápido cuanto más lejos para que lleguen a la vez aprox
+            star['radial_speed'] = -20 - (star['layer'] * 10)
+
+    def reset(self):
+        """Reinicia las estrellas a su estado normal"""
+        self.exploding = False
+        self.imploding = False
+        center_x, center_y = SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2
+        max_radius = math.sqrt(center_x**2 + center_y**2) + 50
+        
+        for star in self.stars:
+            star['radial_speed'] = 0
+            star['radius'] = star['base_radius'] # Volver a posición base
+
+    def update(self):
+        center_x, center_y = SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2
+        max_radius = math.sqrt(center_x**2 + center_y**2) + 100
+        
+        for star in self.stars:
+            if self.exploding:
+                # Movimiento radial explosivo (Hacia afuera)
+                star['radius'] += star['radial_speed']
+                star['radial_speed'] *= 1.02 # Aceleración suave (antes 1.05)
+                
+            elif self.imploding:
+                # Movimiento radial implosivo (Hacia adentro)
+                star['radius'] += star['radial_speed']
+                
+                # Frenado suave al llegar
+                if star['radius'] <= star['base_radius']:
+                    star['radius'] = star['base_radius']
+                    # No paramos la velocidad aquí, simplemente clampamos el radio
+                    # para que se queden en su órbita
+                else:
+                    # Aceleración inversa (frenado) o velocidad constante?
+                    # Vamos a hacer que aceleren hacia adentro para efecto "succión"
+                    pass 
+                    
+            else:
+                # Movimiento rotacional normal
+                star['angle'] += star['speed']
+                
+            # Si se salen del rango máximo en modo normal, reaparecen (loop)
+            # En modo explosión dejamos que se vayan
+            if not self.exploding and not self.imploding and star['radius'] > max_radius:
+                star['radius'] = random.uniform(0, max_radius)
+
+    def draw(self, surface, black_hole_radius=0):
+        center_x, center_y = SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2
+        
+        for star in self.stars:
+            # No dibujar si está dentro del agujero negro
+            if star['radius'] < black_hole_radius:
+                continue
+                
+            # Convertir a cartesianas
+            x = center_x + star['radius'] * math.cos(star['angle'])
+            y = center_y + star['radius'] * math.sin(star['angle'])
+            
+            # Solo dibujar si está en pantalla
+            if 0 <= x <= SCREEN_WIDTH and 0 <= y <= SCREEN_HEIGHT:
+                # Efecto de parpadeo (Twinkle)
+                # Usamos el tiempo para variar el alpha o el color
+                time = pygame.time.get_ticks() * 0.005
+                twinkle = (math.sin(time + star['twinkle_offset']) + 1) / 2 # 0.0 a 1.0
+                
+                # Modificar alpha (simulado con color porque draw.circle no usa alpha por defecto sin surface)
+                # O podemos dibujar rects pequeños o circulos.
+                # Para optimizar, usamos el color base y lo oscurecemos un poco según el twinkle
+                base_c = star['color']
+                factor = 0.7 + 0.3 * twinkle # Brillo entre 70% y 100%
+                color = (int(base_c[0]*factor), int(base_c[1]*factor), int(base_c[2]*factor))
+                
+                if star['size'] == 1:
+                    surface.set_at((int(x), int(y)), color)
+                else:
+                    pygame.draw.circle(surface, color, (int(x), int(y)), star['size'])
+
 
