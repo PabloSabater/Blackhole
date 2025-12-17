@@ -3,7 +3,7 @@ import random
 import math
 from enum import Enum
 from config import *
-from entities import CelestialBody, BlackHole, PlayerCursor, FloatingText, Shockwave, Debris
+from entities import CelestialBody, Asteroid, BlackHole, PlayerCursor, FloatingText, Shockwave, Debris
 
 class GameState(Enum):
     MENU = 0
@@ -362,7 +362,7 @@ class GameManager:
                 
                 level = random.randint(real_min_level, max_unlocked_level)
                 
-                new_body = CelestialBody(level=level)
+                new_body = Asteroid(level=level)
                 
                 # Calcular distancia de spawn dinámica
                 # Mínimo: Radio del agujero negro + margen (para no nacer dentro)
@@ -502,7 +502,7 @@ class GameManager:
                         new_level = min(max_unlocked_level, body.level + random.randint(0, 1))
                         
                         # Crear nuevo cuerpo
-                        new_body = CelestialBody(level=new_level)
+                        new_body = Asteroid(level=new_level)
                         
                         # Heredar posición aproximada del padre pero con variación
                         # Usamos el radio actual del padre +/- un poco

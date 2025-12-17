@@ -6,109 +6,47 @@ from config import *
 class CelestialBody:
     def __init__(self, level):
         self.level = level
-        self.color = MASS_COLORS.get(level, (100, 100, 100))
-        
-        # Variación de Tamaño (Size Variance)
-        # El tamaño influye en la vida total
-        # AUMENTADO: Rango mucho más amplio para que se note la diferencia visual
-        self.size_multiplier = random.uniform(0.6, 2.2)
-        
-        # Defensa basada en Nivel (Mitigación de daño)
-        # Nivel 1: 1.0 (Sin reducción), Nivel 2: 1.5, etc.
-        self.defense_factor = 1.0 + (level - 1) * 0.5
-        
-        # Propiedades físicas
-        self.mass = level * 10 * self.size_multiplier
-        
-        # Vida: Base por nivel * Multiplicador de tamaño
-        # Escalado exponencial (x^1.5) para que los grandes se sientan mucho más "tanques"
-        base_hp = 30 * level 
-        self.max_health = base_hp * (self.size_multiplier ** 1.5)
-        self.current_health = self.max_health
-        
-        # Valor: Escalado exponencial por nivel y tamaño
-        # Aseguramos que el nivel tenga mucho peso
-        # Nivel 1: ~5, Nivel 2: ~15, Nivel 3: ~30...
-        self.value = int((level ** 1.8) * (self.size_multiplier ** 1.2) * 5)
-        self.value = max(1, self.value)
-        
-        # Posición Polar (Optimización)
-        # Se asigna desde fuera si se pasa min_dist/max_dist, si no usa defaults
-        self.orbit_radius = 0 
-        self.angle = random.uniform(0, 2 * math.pi)
-        
-        # Velocidad angular: Más lejos = más lento (Kepler simplificado)
-        # Ajustamos la velocidad para que sea jugable
-        # REDUCIDO: Multiplicador bajado de 0.02 a 0.005 para movimiento mucho más lento y relajante
-        self.angular_speed_base = 0.005 * random.choice([-1, 1])
-        self.angular_speed = 0 # Se calcula al setear el radio
-        
-        # Generación Procedural de Forma (Polígono)
-        # El tamaño visual también se ve afectado por el multiplicador
-        self.target_size = (10 + (level * 5)) * self.size_multiplier
-        self.current_size = 0 # Para animación de entrada
-        self.base_size = self.target_size # Referencia
-        self.spawn_anim_timer = 0
-        # Duración de animación escalada con el tamaño (más grande = más lento/pesado)
-        self.spawn_anim_duration = int(30 + 20 * self.size_multiplier)
-        
-        self.points = self._generate_shape()
-        
-        # Color oscuro pre-calculado para debris y bordes
-        self.dark_color = tuple(max(0, c - 100) for c in self.color)
-        
-        # Coordenadas cartesianas para colisiones (se actualizan en update)
         self.x = 0
         self.y = 0
-        
-        # Física de Empuje (Shockwave)
+        self.orbit_radius = 0
+        self.angle = random.uniform(0, 2 * math.pi)
+        self.angular_speed = 0
         self.push_velocity = 0
-        self.hit_shockwaves = set() # IDs de shockwaves que ya han golpeado a este cuerpo
+        self.hit_shockwaves = set()
+        
+        # Default values (to be overridden by subclasses)
+        self.color = (100, 100, 100)
+        self.dark_color = (50, 50, 50)
+        self.size_multiplier = 1.0
+        self.defense_factor = 1.0
+        self.mass = 10
+        self.max_health = 10
+        self.current_health = 10
+        self.value = 1
+        self.angular_speed_base = 0.005
+        self.target_size = 10
+        self.current_size = 0
+        self.base_size = 10
+        self.spawn_anim_timer = 0
+        self.spawn_anim_duration = 30
+        self.points = []
+
+        self._init_stats()
+        self.points = self._generate_shape()
+
+    def _init_stats(self):
+        """Inicializa las estadísticas específicas del cuerpo celeste"""
+        pass
+
+    def _generate_shape(self):
+        """Genera la forma del cuerpo celeste"""
+        return []
 
     def set_spawn_position(self, min_dist, max_dist):
         """Asigna una posición orbital válida basada en el radio del agujero negro"""
         self.orbit_radius = random.randint(int(min_dist), int(max_dist))
         # Recalcular velocidad angular basada en el nuevo radio
         self.angular_speed = (100 / self.orbit_radius) * self.angular_speed_base
-
-    def _generate_shape(self):
-        """Genera un polígono irregular suavizado para parecer un asteroide"""
-        # 1. Generar vértices base (picos)
-        num_points = random.randint(5, 9)
-        base_points = []
-        for i in range(num_points):
-            theta = (i / num_points) * 2 * math.pi
-            r = random.uniform(0.8, 1.2)
-            px = r * math.cos(theta)
-            py = r * math.sin(theta)
-            base_points.append((px, py))
-            
-        # 2. Suavizar usando el algoritmo de Chaikin (Corner Cutting)
-        # Esto redondea las esquinas iterativamente
-        points = base_points
-        iterations = 2 # 2 iteraciones es suficiente para que se vea suave pero irregular
-        
-        for _ in range(iterations):
-            new_points = []
-            for i in range(len(points)):
-                p0 = points[i]
-                p1 = points[(i + 1) % len(points)]
-                
-                # Crear dos nuevos puntos entre p0 y p1 (al 25% y 75%)
-                # Q = 0.75*P0 + 0.25*P1
-                # R = 0.25*P0 + 0.75*P1
-                
-                qx = 0.75 * p0[0] + 0.25 * p1[0]
-                qy = 0.75 * p0[1] + 0.25 * p1[1]
-                
-                rx = 0.25 * p0[0] + 0.75 * p1[0]
-                ry = 0.25 * p0[1] + 0.75 * p1[1]
-                
-                new_points.append((qx, qy))
-                new_points.append((rx, ry))
-            points = new_points
-            
-        return points
 
     def update(self):
         """Actualiza la posición basada en coordenadas polares"""
@@ -229,6 +167,88 @@ class CelestialBody:
         
         self.current_health -= effective_damage
         return self.current_health <= 0, effective_damage
+
+class Asteroid(CelestialBody):
+    def _init_stats(self):
+        self.color = MASS_COLORS.get(self.level, (100, 100, 100))
+        
+        # Variación de Tamaño (Size Variance)
+        # El tamaño influye en la vida total
+        # AUMENTADO: Rango mucho más amplio para que se note la diferencia visual
+        self.size_multiplier = random.uniform(0.6, 2.2)
+        
+        # Defensa basada en Nivel (Mitigación de daño)
+        # Nivel 1: 1.0 (Sin reducción), Nivel 2: 1.5, etc.
+        self.defense_factor = 1.0 + (self.level - 1) * 0.5
+        
+        # Propiedades físicas
+        self.mass = self.level * 10 * self.size_multiplier
+        
+        # Vida: Base por nivel * Multiplicador de tamaño
+        # Escalado exponencial (x^1.5) para que los grandes se sientan mucho más "tanques"
+        base_hp = 30 * self.level 
+        self.max_health = base_hp * (self.size_multiplier ** 1.5)
+        self.current_health = self.max_health
+        
+        # Valor: Escalado exponencial por nivel y tamaño
+        # Aseguramos que el nivel tenga mucho peso
+        # Nivel 1: ~5, Nivel 2: ~15, Nivel 3: ~30...
+        self.value = int((self.level ** 1.8) * (self.size_multiplier ** 1.2) * 5)
+        self.value = max(1, self.value)
+        
+        # Velocidad angular: Más lejos = más lento (Kepler simplificado)
+        # Ajustamos la velocidad para que sea jugable
+        # REDUCIDO: Multiplicador bajado de 0.02 a 0.005 para movimiento mucho más lento y relajante
+        self.angular_speed_base = 0.005 * random.choice([-1, 1])
+        
+        # Generación Procedural de Forma (Polígono)
+        # El tamaño visual también se ve afectado por el multiplicador
+        self.target_size = (10 + (self.level * 5)) * self.size_multiplier
+        self.base_size = self.target_size # Referencia
+        # Duración de animación escalada con el tamaño (más grande = más lento/pesado)
+        self.spawn_anim_duration = int(30 + 20 * self.size_multiplier)
+        
+        # Color oscuro pre-calculado para debris y bordes
+        self.dark_color = tuple(max(0, c - 100) for c in self.color)
+
+    def _generate_shape(self):
+        """Genera un polígono irregular suavizado para parecer un asteroide"""
+        # 1. Generar vértices base (picos)
+        num_points = random.randint(5, 9)
+        base_points = []
+        for i in range(num_points):
+            theta = (i / num_points) * 2 * math.pi
+            r = random.uniform(0.8, 1.2)
+            px = r * math.cos(theta)
+            py = r * math.sin(theta)
+            base_points.append((px, py))
+            
+        # 2. Suavizar usando el algoritmo de Chaikin (Corner Cutting)
+        # Esto redondea las esquinas iterativamente
+        points = base_points
+        iterations = 2 # 2 iteraciones es suficiente para que se vea suave pero irregular
+        
+        for _ in range(iterations):
+            new_points = []
+            for i in range(len(points)):
+                p0 = points[i]
+                p1 = points[(i + 1) % len(points)]
+                
+                # Crear dos nuevos puntos entre p0 y p1 (al 25% y 75%)
+                # Q = 0.75*P0 + 0.25*P1
+                # R = 0.25*P0 + 0.75*P1
+                
+                qx = 0.75 * p0[0] + 0.25 * p1[0]
+                qy = 0.75 * p0[1] + 0.25 * p1[1]
+                
+                rx = 0.25 * p0[0] + 0.75 * p1[0]
+                ry = 0.25 * p0[1] + 0.75 * p1[1]
+                
+                new_points.append((qx, qy))
+                new_points.append((rx, ry))
+            points = new_points
+            
+        return points
 
 class BlackHole:
     def __init__(self):
