@@ -7,13 +7,16 @@ FPS = 60
 TITLE = "Cosmic Incremental"
 
 # --- Paleta de Colores (Cozy & Pastel) ---
-# Fondo Beige Claro
+# Fondo Beige Claro (Juego)
 COLOR_BACKGROUND = (250, 243, 224)  # Un beige muy suave y cálido
+# Fondo Espacio Profundo (Tienda/Mejoras)
+COLOR_BACKGROUND_SHOP = (15, 15, 25)  # Azul muy oscuro / Negro espacial
 
 # Elementos UI
-COLOR_TEXT = (89, 69, 69)           # Marrón oscuro suave para texto
-COLOR_TEXT_INVERTED = (250, 243, 224) # Beige claro (igual al fondo original) para texto sobre negro
-COLOR_CURSOR = (115, 95, 95)        # Marrón pastel suave para el cursor (Coherente con el texto)
+COLOR_TEXT = (89, 69, 69)           # Marrón oscuro suave para texto (Juego)
+COLOR_TEXT_LIGHT = (220, 220, 230)  # Texto claro para fondos oscuros (Tienda)
+COLOR_TEXT_INVERTED = (250, 243, 224) # Beige claro para texto sobre negro
+COLOR_CURSOR = (115, 95, 95)        # Marrón pastel suave para el cursor
 COLOR_BLACK_HOLE = (25, 25, 25)     # Negro casi puro
 COLOR_XP_BAR_BG = (230, 230, 230)   # Fondo barra XP
 COLOR_XP_BAR_FILL = (100, 200, 200) # Relleno barra XP (Cyan pastel)

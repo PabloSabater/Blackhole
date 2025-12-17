@@ -192,21 +192,24 @@ class GameManager:
             self.state = GameState.MENU
 
     def _update_transition_to_shop(self):
-        self.shop_transition_radius += self.transition_speed
-        if self.shop_transition_radius >= self.max_transition_radius:
-            self.shop_transition_radius = self.max_transition_radius
+        # El agujero negro se encoge hasta el tamaño del botón central
+        self.black_hole.target_radius = 25 # Tamaño del botón central (Reducido de 40)
+        self.black_hole.anim_speed = 15.0 # Velocidad rápida
+        self.black_hole.update()
+        
+        # Si ya llegó al tamaño objetivo
+        if abs(self.black_hole.radius - self.black_hole.target_radius) < 1:
+            self.black_hole.radius = self.black_hole.target_radius
             self.state = GameState.PROGRESSION
 
     def _update_transition_from_shop(self):
-        self.shop_transition_radius -= self.transition_speed
-        if self.shop_transition_radius <= 0:
-            self.shop_transition_radius = 0
-            self.state = GameState.SUMMARY
+        # Esta transición ya no se usa para volver al Summary, 
+        # sino que el botón central inicia el juego (TRANSITION_TO_PLAY)
+        pass
 
     def _update_progression(self):
-        # Aquí gestionaremos los clicks en el menú radial
-        # Por ahora solo necesitamos que el cursor se mueva
-        pass
+        # El agujero negro sigue pulsando en el centro
+        self.black_hole.update()
 
     def _get_visible_nodes_positions(self):
         """Calcula las posiciones de todos los nodos visibles en el árbol de mejoras"""
@@ -296,10 +299,10 @@ class GameManager:
                             # Feedback sonoro o visual podría ir aquí
                             pass
                             
-                # Botón Volver (Centro)
+                # Botón Volver (Centro) -> AHORA ES JUGAR
                 center_x, center_y = SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2
-                if math.sqrt((mx - center_x)**2 + (my - center_y)**2) < 40:
-                    self.state = GameState.TRANSITION_FROM_SHOP
+                if math.sqrt((mx - center_x)**2 + (my - center_y)**2) < 25: # Radio ajustado a 25
+                    self.reset_run()
 
     def _update_transition_summary(self):
         # El agujero negro crece
@@ -320,7 +323,7 @@ class GameManager:
             self.shockwaves = []     # Limpiar ondas
 
     def _update_transition_play(self):
-        # El agujero negro decrece
+        # El agujero negro decrece (o crece si viene de la tienda)
         self.black_hole.update()
         
         # Si ya llegó al tamaño base
@@ -552,8 +555,29 @@ class GameManager:
         return self.current_zoom
 
     def draw(self, surface):
-        # Fondo
-        surface.fill(COLOR_BACKGROUND)
+        # Fondo Dinámico
+        if self.state == GameState.PROGRESSION:
+            surface.fill(COLOR_BACKGROUND_SHOP)
+        elif self.state == GameState.TRANSITION_TO_PLAY:
+            # Interpolación de Oscuro a Beige
+            # Usamos el radio del agujero negro como proxy del progreso
+            # Radio va de 25 (Shop) a 50 (Base)
+            progress = (self.black_hole.radius - 25) / (BLACK_HOLE_RADIUS_BASE - 25)
+            progress = max(0, min(1, progress))
+            
+            # Lerp color
+            r = int(COLOR_BACKGROUND_SHOP[0] + (COLOR_BACKGROUND[0] - COLOR_BACKGROUND_SHOP[0]) * progress)
+            g = int(COLOR_BACKGROUND_SHOP[1] + (COLOR_BACKGROUND[1] - COLOR_BACKGROUND_SHOP[1]) * progress)
+            b = int(COLOR_BACKGROUND_SHOP[2] + (COLOR_BACKGROUND[2] - COLOR_BACKGROUND_SHOP[2]) * progress)
+            surface.fill((r, g, b))
+        elif self.state == GameState.TRANSITION_TO_SHOP:
+             # Aquí el agujero negro cubre casi todo al principio, así que podemos poner el fondo oscuro directamente
+             # o hacer una interpolación inversa si se viera algo.
+             # Como venimos de Summary (Negro total), al encogerse revelará el fondo.
+             # Queremos que revele el fondo oscuro.
+             surface.fill(COLOR_BACKGROUND_SHOP)
+        else:
+            surface.fill(COLOR_BACKGROUND)
         
         # Calcular Zoom
         zoom = self.get_zoom()
@@ -562,7 +586,7 @@ class GameManager:
         # Si el agujero negro se está expandiendo o ya cubrió la pantalla, 
         # debe dibujarse ENCIMA de los cuerpos para "tragárselos" visualmente.
         # También en las transiciones de tienda, el agujero negro (Summary) está debajo
-        draw_black_hole_on_top = self.state in [GameState.TRANSITION_TO_SUMMARY, GameState.SUMMARY, GameState.TRANSITION_TO_SHOP, GameState.TRANSITION_FROM_SHOP]
+        draw_black_hole_on_top = self.state in [GameState.TRANSITION_TO_SUMMARY, GameState.SUMMARY, GameState.TRANSITION_TO_SHOP, GameState.TRANSITION_FROM_SHOP, GameState.PROGRESSION]
         
         if not draw_black_hole_on_top:
             self.black_hole.draw(surface, zoom)
@@ -577,6 +601,9 @@ class GameManager:
         if draw_black_hole_on_top:
             # En transiciones a pantalla completa, ignoramos el zoom para que cubra todo bien
             if self.state == GameState.TRANSITION_TO_SUMMARY:
+                self.black_hole.draw(surface, 1.0)
+            elif self.state == GameState.PROGRESSION:
+                # En el menú de mejoras, el agujero negro está en el centro (sin zoom de juego)
                 self.black_hole.draw(surface, 1.0)
             else:
                 self.black_hole.draw(surface, zoom)
@@ -810,8 +837,8 @@ class GameManager:
         surface.blit(menu_text, (menu_rect.centerx - menu_text.get_width()//2, menu_rect.centery - menu_text.get_height()//2))
 
     def _draw_progression(self, surface):
-        # Fondo Beige (cubriendo el agujero negro gigante)
-        surface.fill(COLOR_BACKGROUND)
+        # Fondo Espacial (Ya no beige)
+        # El agujero negro central se dibuja en el método draw() principal
         
         center_x, center_y = SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2
         
@@ -889,15 +916,18 @@ class GameManager:
                 icon_text = self.font_desc.render(str(level), True, COLOR_TEXT)
                 surface.blit(icon_text, (x - icon_text.get_width()//2, y - icon_text.get_height()//2))
 
-        # Botón Central (Volver)
-        center_radius = 40 # Aumentado de 30
+        # Botón Central (Volver/Jugar)
+        # Ya no dibujamos un círculo, el agujero negro está ahí.
+        # Solo dibujamos el texto "PLAY" o "EVOLVE" encima si queremos, o un anillo indicador
+        center_radius = 25 # Reducido de 40
         hover_center = math.sqrt((mx - center_x)**2 + (my - center_y)**2) < center_radius
-        center_color = (200, 200, 200) if hover_center else (150, 150, 150)
-        pygame.draw.circle(surface, center_color, (center_x, center_y), center_radius)
-        pygame.draw.circle(surface, COLOR_TEXT, (center_x, center_y), center_radius, 2)
         
-        back_text = self.font_desc.render("BACK", True, COLOR_TEXT)
-        surface.blit(back_text, (center_x - back_text.get_width()//2, center_y - back_text.get_height()//2))
+        if hover_center:
+            # Indicador sutil de que es interactivo
+            pygame.draw.circle(surface, (255, 255, 255), (center_x, center_y), center_radius + 5, 1)
+            # Texto más pequeño o icono de Play
+            play_text = self.font_btn.render("PLAY", True, (255, 255, 255))
+            surface.blit(play_text, (center_x - play_text.get_width()//2, center_y - play_text.get_height()//2))
         
         # Mostrar Dinero Total arriba
         money_surf = self.font_title.render(f"BANCO: ${self.total_money}", True, COLOR_MONEY_TEXT) # Verde oscuro se ve bien
@@ -905,13 +935,13 @@ class GameManager:
         
         # Etiquetas de Ramas (Colores más oscuros para contraste)
         # Ajustadas posiciones para el nuevo espaciado
-        lbl_ast = self.font_desc.render("ASTEROIDES", True, (50, 100, 150))
+        lbl_ast = self.font_desc.render("ASTEROIDES", True, COLOR_TEXT_LIGHT)
         surface.blit(lbl_ast, (center_x - 250, center_y - 30))
         
-        lbl_bh = self.font_desc.render("AGUJERO NEGRO", True, (100, 50, 150))
+        lbl_bh = self.font_desc.render("AGUJERO NEGRO", True, COLOR_TEXT_LIGHT)
         surface.blit(lbl_bh, (center_x + 150, center_y - 30))
         
-        lbl_uniq = self.font_desc.render("ÚNICAS", True, (150, 150, 50))
+        lbl_uniq = self.font_desc.render("ÚNICAS", True, COLOR_TEXT_LIGHT)
         surface.blit(lbl_uniq, (center_x - lbl_uniq.get_width()//2, center_y - 150))
 
         # DIBUJAR TOOLTIP AL FINAL (ENCIMA DE TODO)
@@ -976,6 +1006,11 @@ class GameManager:
         
         # Resetear progreso del agujero negro (pero manteniendo tamaño gigante para la animación)
         self.black_hole.shrink_to_game() 
+        
+        # Si venimos de la tienda (radio 25), queremos que crezca suavemente
+        # Si venimos de Summary (radio gigante), shrink_to_game ya lo maneja
+        if self.black_hole.radius < BLACK_HOLE_RADIUS_BASE:
+             self.black_hole.anim_speed = 0.5 # Velocidad lenta para ver el gradiente
         
         self.current_xp = 0
         self.xp_to_next_level = XP_BASE_REQUIREMENT
