@@ -285,6 +285,65 @@ class Planet(CelestialBody):
         # Atmósfera (Color secundario)
         self.atmosphere_color = tuple(min(255, c + 50) for c in self.color)
         self.atmosphere_pulse = random.uniform(0, 6.28)
+        
+        self._generate_texture()
+
+    def _generate_texture(self):
+        # Resolución alta para evitar pixelado al hacer zoom
+        res = int(self.target_size * 4)
+        if res < 100: res = 100
+        
+        # 1. Fondo Base (Color Principal)
+        rect_surf = pygame.Surface((res, res), pygame.SRCALPHA)
+        rect_surf.fill(self.color)
+        
+        # 2. Bandas Sinoidales (Júpiter Style)
+        num_bands = random.randint(5, 10)
+        
+        # Colores para las bandas (Oscuro y Claro)
+        c_dark = self.dark_color
+        c_light = tuple(min(255, c + 40) for c in self.color)
+        
+        for i in range(num_bands):
+            # Alternar entre oscuro y claro
+            band_color = c_dark if i % 2 == 0 else c_light
+            
+            # Propiedades de la banda
+            y_center = (i / num_bands) * res
+            thickness = random.randint(res//20, res//8)
+            amplitude = random.randint(res//50, res//20)
+            freq = random.uniform(0.02, 0.06)
+            phase = random.uniform(0, 6.28)
+            
+            # Dibujar polígono para la banda
+            points = []
+            # Borde superior
+            for x in range(0, res, 4):
+                y = y_center + math.sin(x * freq + phase) * amplitude
+                points.append((x, y))
+            
+            # Borde inferior
+            for x in range(res, -1, -4):
+                y = y_center + thickness + math.sin(x * freq + phase) * amplitude
+                points.append((x, y))
+                
+            pygame.draw.polygon(rect_surf, band_color, points)
+            
+        # 3. Aplicar Máscara Circular
+        mask = pygame.Surface((res, res), pygame.SRCALPHA)
+        pygame.draw.circle(mask, (255, 255, 255, 255), (res//2, res//2), res//2)
+        
+        # Multiplicar para recortar (Mantiene lo que está dentro del círculo blanco)
+        rect_surf.blit(mask, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+        
+        self.texture = rect_surf
+        
+        # 4. Generar versión "Muerta" (Oscura)
+        self.dead_texture = self.texture.copy()
+        # Oscurecer: Multiplicar por gris oscuro
+        dark_overlay = pygame.Surface((res, res), pygame.SRCALPHA)
+        dark_overlay.fill((80, 80, 80, 255))
+        self.dead_texture.blit(dark_overlay, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
 
     def _generate_shape(self):
         # Los planetas son círculos perfectos, no necesitamos puntos irregulares
@@ -335,8 +394,13 @@ class Planet(CelestialBody):
         # 2. Planeta Base (Círculo)
         # Usamos la misma técnica de clipping que los asteroides para la vida
         
+        # Texture Size (Diameter)
+        tex_size = int(screen_size * 2)
+        
         # Primero dibujamos la versión "muerta" (oscura) completa
-        pygame.draw.circle(surface, self.dark_color, (screen_x, screen_y), int(screen_size))
+        if tex_size > 0:
+            scaled_dead = pygame.transform.smoothscale(self.dead_texture, (tex_size, tex_size))
+            surface.blit(scaled_dead, (screen_x - tex_size//2, screen_y - tex_size//2))
         
         # Luego dibujamos la versión "viva" recortada según la vida restante
         if self.current_health > 0:
@@ -360,8 +424,10 @@ class Planet(CelestialBody):
             
             surface.set_clip(clip_rect)
             
-            # Dibujar planeta vivo
-            pygame.draw.circle(surface, self.color, (screen_x, screen_y), int(screen_size))
+            # Dibujar planeta vivo (Textura original)
+            if tex_size > 0:
+                scaled_live = pygame.transform.smoothscale(self.texture, (tex_size, tex_size))
+                surface.blit(scaled_live, (screen_x - tex_size//2, screen_y - tex_size//2))
             
             # Restaurar clip
             surface.set_clip(old_clip)
@@ -537,13 +603,13 @@ class Shockwave:
         surface.blit(s, (screen_x - screen_radius, screen_y - screen_radius))
 
 class Debris:
-    def __init__(self, x, y, color, radius, angle):
+    def __init__(self, x, y, color, radius, angle, size_multiplier=1.0):
         self.x = x
         self.y = y
         self.color = color
         self.orbit_radius = radius
         self.angle = angle
-        self.size = random.randint(3, 6) # Aumentado tamaño del debris
+        self.size = random.randint(3, 6) * size_multiplier # Tamaño escalable
         self.speed = random.uniform(0.02, 0.05) # Velocidad angular rápida
         self.decay_speed = random.uniform(1.0, 2.0) # Velocidad de caída al centro
 

@@ -397,10 +397,18 @@ class GameManager:
                 
                 if should_spawn_planet:
                     # Lógica de nivel de Planeta
-                    # Nivel base 1 + bonus de masa planetaria
+                    # Nivel máximo determinado por mejoras
                     max_planet_level = min(6, 1 + int(self.planet_mass_bonus))
-                    # Los planetas siempre intentan salir con el mayor nivel posible
-                    level = max_planet_level
+                    
+                    # Nivel mínimo determinado por el nivel del agujero negro
+                    # Los planetas empiezan en nivel 5. Mantenemos los niveles bajos durante 3 niveles (5, 6, 7).
+                    # A partir del nivel 8, el mínimo sube a 2.
+                    min_planet_level = max(1, self.black_hole.level - 6)
+                    
+                    # Asegurar rango válido
+                    real_min_level = min(min_planet_level, max_planet_level)
+                    
+                    level = random.randint(real_min_level, max_planet_level)
                     new_body = Planet(level=level)
                 else:
                     # Lógica de nivel de Asteroide
@@ -578,9 +586,17 @@ class GameManager:
 
                     # Generar Debris (Escalado con tamaño)
                     # Más debris para cuerpos más grandes
-                    num_debris = int(random.randint(3, 6) * body.size_multiplier)
+                    if isinstance(body, Planet):
+                        # Planetas: Mucho más debris y más grande
+                        num_debris = int(random.randint(15, 25) * body.size_multiplier)
+                        debris_size_mult = 2.5
+                    else:
+                        # Asteroides: Debris normal
+                        num_debris = int(random.randint(3, 6) * body.size_multiplier)
+                        debris_size_mult = 1.0
+                        
                     for _ in range(num_debris):
-                        self.debris_list.append(Debris(body.x, body.y, body.dark_color, body.orbit_radius, body.angle))
+                        self.debris_list.append(Debris(body.x, body.y, body.dark_color, body.orbit_radius, body.angle, size_multiplier=debris_size_mult))
 
         # Eliminar cuerpos destruidos
         for body in bodies_to_remove:
