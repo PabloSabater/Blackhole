@@ -68,6 +68,8 @@ class GameManager:
         self.max_transition_radius = int((SCREEN_WIDTH**2 + SCREEN_HEIGHT**2)**0.5 / 2) + 50
         self.transition_speed = self.max_transition_radius / (FPS * 0.5) # 0.5 segundos
         self.menu_anim_offset = 0 # Animación de salida del menú
+        self.menu_time = 0 # Timer para animaciones del menú
+        self.nodes_anim_progress = 0.0 # 0.0 (Invisible) -> 1.0 (Visible)
         
         # Zoom
         self.current_zoom = 1.0
@@ -288,6 +290,7 @@ class GameManager:
                 elif shop_rect.collidepoint(event.pos):
                     self.starfield.trigger_implosion() # Activar efecto Warp Inverso
                     self.state = GameState.TRANSITION_TO_SHOP
+                    self.nodes_anim_progress = 0.0 # Resetear animación de nodos
                 elif menu_rect.collidepoint(event.pos):
                     self.return_to_menu()
 
@@ -311,6 +314,10 @@ class GameManager:
                 if math.sqrt((mx - center_x)**2 + (my - center_y)**2) < 25: # Radio ajustado a 25
                     self.starfield.trigger_explosion() # Activar efecto Warp
                     self.reset_run()
+                    # La animación de salida de los nodos se maneja en _draw_progression o _update_transition_play
+                    # Pero como cambiamos de estado inmediatamente, necesitamos que la transición visual lo maneje.
+                    # En este caso, el efecto Warp y el cambio de fondo ya son bastante fuertes.
+                    # Podríamos hacer que los nodos se alejen rápidamente hacia afuera.
 
     def _update_transition_summary(self):
         # El agujero negro crece
@@ -584,17 +591,59 @@ class GameManager:
             progress = (self.black_hole.radius - 25) / denom
             progress = max(0, min(1, progress))
             
-            # Lerp color
-            r = int(COLOR_BACKGROUND_SHOP[0] + (COLOR_BACKGROUND[0] - COLOR_BACKGROUND_SHOP[0]) * progress)
-            g = int(COLOR_BACKGROUND_SHOP[1] + (COLOR_BACKGROUND[1] - COLOR_BACKGROUND_SHOP[1]) * progress)
-            b = int(COLOR_BACKGROUND_SHOP[2] + (COLOR_BACKGROUND[2] - COLOR_BACKGROUND_SHOP[2]) * progress)
-            surface.fill((r, g, b))
-            
-            # Dibujar Starfield explotando
-            self.starfield.draw(surface, black_hole_radius=self.black_hole.radius)
-            
-            # Interpolación del aura (Inverso al progreso: 1.0 -> 0.0)
-            energy_factor = 1.0 - progress
+            # Detectar si venimos de Summary (Radio gigante) o Shop (Radio pequeño)
+            # Si el radio es muy grande, estamos encogiendo desde Summary
+            if self.black_hole.radius > BLACK_HOLE_RADIUS_BASE + 10:
+                # Venimos de Summary: Fondo de juego normal
+                surface.fill(COLOR_BACKGROUND)
+                energy_factor = 0.0
+            else:
+                # Venimos de Shop: Interpolación y Starfield
+                # Lerp color
+                r = int(COLOR_BACKGROUND_SHOP[0] + (COLOR_BACKGROUND[0] - COLOR_BACKGROUND_SHOP[0]) * progress)
+                g = int(COLOR_BACKGROUND_SHOP[1] + (COLOR_BACKGROUND[1] - COLOR_BACKGROUND_SHOP[1]) * progress)
+                b = int(COLOR_BACKGROUND_SHOP[2] + (COLOR_BACKGROUND[2] - COLOR_BACKGROUND_SHOP[2]) * progress)
+                surface.fill((r, g, b))
+                
+                # Dibujar Starfield explotando
+                self.starfield.draw(surface, black_hole_radius=self.black_hole.radius)
+                
+                # Interpolación del aura (Inverso al progreso: 1.0 -> 0.0)
+                energy_factor = 1.0 - progress
+                
+                # ANIMACIÓN DE SALIDA DE NODOS (Efecto Warp hacia afuera)
+                # Reutilizamos la lógica de _draw_progression pero con un "zoom" exagerado
+                # basado en el progreso de la transición
+                
+                # Solo dibujamos si estamos al principio de la transición para que no moleste
+                if progress < 0.8:
+                    # Factor de expansión exponencial
+                    expansion = 1.0 + (progress * 5.0) # 1.0 -> 6.0
+                    alpha = int(255 * (1.0 - progress * 1.5)) # Desvanecimiento rápido
+                    if alpha > 0:
+                        # Dibujar nodos expandiéndose
+                        center_x, center_y = SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2
+                        node_positions = self._get_visible_nodes_positions()
+                        
+                        # Superficie temporal para transparencia
+                        nodes_surf = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+                        
+                        for key, (x, y) in node_positions.items():
+                            # Expandir desde el centro
+                            dx = x - center_x
+                            dy = y - center_y
+                            ex = center_x + dx * expansion
+                            ey = center_y + dy * expansion
+                            
+                            # Solo dibujar si está en pantalla
+                            if 0 <= ex <= SCREEN_WIDTH and 0 <= ey <= SCREEN_HEIGHT:
+                                # Dibujar nodo simplificado (solo círculo)
+                                pygame.draw.circle(nodes_surf, (100, 200, 255, alpha), (int(ex), int(ey)), 10)
+                                # Línea de velocidad (Trail) hacia el centro
+                                start_trail = (int(ex - dx*0.1), int(ey - dy*0.1))
+                                pygame.draw.line(nodes_surf, (100, 200, 255, alpha//2), start_trail, (int(ex), int(ey)), 2)
+                        
+                        surface.blit(nodes_surf, (0, 0))
             
         elif self.state == GameState.TRANSITION_TO_SHOP:
              # Aquí el agujero negro cubre casi todo al principio
@@ -876,6 +925,20 @@ class GameManager:
         surface.blit(menu_text, (menu_rect.centerx - menu_text.get_width()//2, menu_rect.centery - menu_text.get_height()//2))
 
     def _draw_progression(self, surface):
+        # Actualizar timer de animación
+        self.menu_time += 0.05
+        
+        # Animación de entrada de nodos
+        if self.nodes_anim_progress < 1.0:
+            self.nodes_anim_progress += 0.05
+            if self.nodes_anim_progress > 1.0: self.nodes_anim_progress = 1.0
+            
+        # Easing para la animación (EaseOutBack para un efecto de rebote suave)
+        t = self.nodes_anim_progress
+        c1 = 1.70158
+        c3 = c1 + 1
+        ease_val = 1 + c3 * math.pow(t - 1, 3) + c1 * math.pow(t - 1, 2)
+        
         # Fondo Espacial (Ya no beige)
         # El agujero negro central se dibuja en el método draw() principal
         
@@ -893,7 +956,24 @@ class GameManager:
         # Obtener posiciones de nodos visibles
         node_positions = self._get_visible_nodes_positions()
         
-        # Dibujar conexiones (Líneas)
+        # Aplicar flotación y ANIMACIÓN DE ENTRADA a las posiciones
+        floating_positions = {}
+        for key, (x, y) in node_positions.items():
+            # Usamos hash de la key para desincronizar las ondas
+            offset = hash(key) % 100
+            float_y = math.sin(self.menu_time + offset) * 5 # Amplitud 5px
+            
+            # Animación de entrada: Los nodos vienen desde el centro
+            # Interpolamos entre el centro y la posición final
+            final_x = x
+            final_y = y + float_y
+            
+            curr_x = center_x + (final_x - center_x) * ease_val
+            curr_y = center_y + (final_y - center_y) * ease_val
+            
+            floating_positions[key] = (curr_x, curr_y)
+        
+        # Dibujar conexiones (Líneas de Energía)
         # Necesitamos saber dónde empieza cada rama para conectar los nodos raíz
         branches = {
             "asteroid": {"angle": math.pi},
@@ -902,24 +982,55 @@ class GameManager:
         }
         branch_start_dist = 100
         
-        for key, (x, y) in node_positions.items():
+        for key, (x, y) in floating_positions.items():
             data = UPGRADES[key]
             parent_key = data.get("parent")
             
-            if parent_key and parent_key in node_positions:
-                # Conectar con padre
-                parent_pos = node_positions[parent_key]
-                pygame.draw.line(surface, (100, 100, 100), parent_pos, (x, y), 2)
+            start_pos = None
+            is_active = False # Si la conexión está "viva" (padre comprado)
+            
+            if parent_key and parent_key in floating_positions:
+                start_pos = floating_positions[parent_key]
+                # La conexión está activa si el nodo destino (hijo) ha sido comprado
+                # Esto significa que la conexión está "establecida"
+                if self.upgrades.get(key, 0) > 0:
+                    is_active = True
             elif not parent_key:
-                # Es nodo raíz, conectar con el inicio de su rama
+                # Es nodo raíz
                 cat = data.get("category", "asteroid")
                 angle = branches[cat]["angle"]
-                start_x = center_x + branch_start_dist * math.cos(angle)
-                start_y = center_y + branch_start_dist * math.sin(angle)
-                pygame.draw.line(surface, (100, 100, 100), (start_x, start_y), (x, y), 2)
+                sx = center_x + branch_start_dist * math.cos(angle)
+                sy = center_y + branch_start_dist * math.sin(angle)
+                start_pos = (sx, sy)
+                # Las conexiones al núcleo están activas si el nodo raíz está comprado
+                if self.upgrades.get(key, 0) > 0:
+                    is_active = True
+            
+            if start_pos:
+                # Dibujar línea base oscura (siempre presente como "cable apagado")
+                pygame.draw.line(surface, (30, 30, 40), start_pos, (x, y), 5)
+                
+                if is_active:
+                    # Efecto Neón: La línea completa brilla
+                    # Pulsación suave del brillo para que parezca electricidad viva
+                    pulse = (math.sin(self.menu_time * 4 + hash(key)) + 1) / 2 # 0.0 a 1.0
+                    
+                    # 1. Glow externo (Simulado con líneas más anchas y oscuras)
+                    # Azul eléctrico oscuro
+                    glow_color = (0, 100, 180) 
+                    pygame.draw.line(surface, glow_color, start_pos, (x, y), 5)
+                    
+                    # 2. Línea media (Color principal pulsante)
+                    # Cian brillante
+                    mid_val = 150 + int(105 * pulse)
+                    mid_color = (0, mid_val, mid_val)
+                    pygame.draw.line(surface, mid_color, start_pos, (x, y), 3)
+                    
+                    # 3. Núcleo (Blanco/Cian muy claro)
+                    pygame.draw.line(surface, (200, 255, 255), start_pos, (x, y), 1)
 
         # Dibujar nodos (en segunda pasada para que queden encima de las líneas)
-        for key, pos in node_positions.items():
+        for key, pos in floating_positions.items():
             x, y = pos
             data = UPGRADES[key]
             
@@ -939,23 +1050,75 @@ class GameManager:
                     "x": x, "y": y
                 }
             
-            # Color del nodo
+            # --- Estilos de Nodo ---
+            
+            # 1. Relleno (Fondo)
             if is_maxed:
-                color = (100, 200, 100) # Verde
+                fill_color = (20, 50, 20) # Verde oscuro
             elif can_buy:
-                color = COLOR_XP_BAR_FILL # Azul
+                fill_color = (20, 20, 40) # Azul oscuro
+            elif level > 0:
+                # Comprado pero no alcanza para mejorar (Stalled) -> GRIS
+                fill_color = (20, 20, 25) # Gris oscuro
             else:
-                color = (100, 100, 100) # Gris
+                # No comprado y no alcanza (Locked/Dormant) -> ROJO
+                fill_color = (30, 10, 10) # Rojo oscuro suave
             
-            if hover: color = (min(255, color[0]+50), min(255, color[1]+50), min(255, color[2]+50))
+            pygame.draw.circle(surface, fill_color, (x, y), node_radius)
             
-            # Dibujar círculo
-            pygame.draw.circle(surface, color, (x, y), node_radius)
-            pygame.draw.circle(surface, COLOR_TEXT, (x, y), node_radius, 1) # Borde oscuro
+            # 2. Borde y Efectos
+            if is_maxed:
+                # Dorado / Verde Brillante
+                border_color = (255, 215, 0) # Gold
+                pygame.draw.circle(surface, border_color, (x, y), node_radius, 2)
+                # Brillo interno
+                pygame.draw.circle(surface, (100, 255, 100), (x, y), node_radius - 4, 1)
+                
+            elif can_buy:
+                # Cian Neón Pulsante
+                pulse = (math.sin(self.menu_time * 5) + 1) / 2 # 0.0 a 1.0 rápido
+                base_val = 150
+                bright_val = 255
+                c_val = int(base_val + (bright_val - base_val) * pulse)
+                border_color = (0, c_val, c_val) # Cian variable
+                
+                # Glow externo si es comprable
+                glow_surf = pygame.Surface((node_radius*4, node_radius*4), pygame.SRCALPHA)
+                pygame.draw.circle(glow_surf, (0, 200, 255, 50), (node_radius*2, node_radius*2), node_radius + 5 + 2*pulse)
+                surface.blit(glow_surf, (x - node_radius*2, y - node_radius*2))
+                
+                pygame.draw.circle(surface, border_color, (x, y), node_radius, 2)
+                
+            elif level > 0:
+                # Gris (Bloqueado por dinero pero ya poseído) -> GRIS
+                border_color = (80, 80, 100) # Gris metal
+                pygame.draw.circle(surface, border_color, (x, y), node_radius, 1)
+                
+            else:
+                # Rojo (Bloqueado y nunca comprado) -> ROJO
+                border_color = (150, 50, 50) # Rojo óxido
+                pygame.draw.circle(surface, border_color, (x, y), node_radius, 1)
+            
+            # Highlight al hacer hover
+            if hover:
+                pygame.draw.circle(surface, (255, 255, 255), (x, y), node_radius + 2, 1)
             
             # Nivel dentro
             if node_radius > 10:
-                icon_text = self.font_desc.render(str(level), True, COLOR_TEXT)
+                if is_maxed:
+                    txt_col = (255, 215, 0)
+                    txt_str = "M" # Max
+                elif can_buy:
+                    txt_col = (200, 255, 255)
+                    txt_str = str(level)
+                elif level > 0:
+                    txt_col = (150, 150, 170) # Gris claro
+                    txt_str = str(level)
+                else:
+                    txt_col = (150, 100, 100) # Rojo claro
+                    txt_str = "0"
+                    
+                icon_text = self.font_desc.render(txt_str, True, txt_col)
                 surface.blit(icon_text, (x - icon_text.get_width()//2, y - icon_text.get_height()//2))
 
         # Botón Central (Volver/Jugar)
