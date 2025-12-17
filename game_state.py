@@ -3,7 +3,7 @@ import random
 import math
 from enum import Enum
 from config import *
-from entities import CelestialBody, Asteroid, BlackHole, PlayerCursor, FloatingText, Shockwave, Debris
+from entities import CelestialBody, Asteroid, BlackHole, PlayerCursor, FloatingText, Shockwave, Debris, Starfield
 
 class GameState(Enum):
     MENU = 0
@@ -27,6 +27,7 @@ class GameManager:
         self.floating_texts = []
         self.shockwaves = []
         self.debris_list = []
+        self.starfield = Starfield() # Fondo dinámico para el menú de mejoras
         
         # Stats de la Run
         self.time_remaining = GAME_DURATION
@@ -197,6 +198,9 @@ class GameManager:
         self.black_hole.anim_speed = 15.0 # Velocidad rápida
         self.black_hole.update()
         
+        # Actualizar implosión de estrellas
+        self.starfield.update()
+        
         # Si ya llegó al tamaño objetivo
         if abs(self.black_hole.radius - self.black_hole.target_radius) < 1:
             self.black_hole.radius = self.black_hole.target_radius
@@ -210,6 +214,8 @@ class GameManager:
     def _update_progression(self):
         # El agujero negro sigue pulsando en el centro
         self.black_hole.update()
+        # Actualizar fondo de estrellas
+        self.starfield.update()
 
     def _get_visible_nodes_positions(self):
         """Calcula las posiciones de todos los nodos visibles en el árbol de mejoras"""
@@ -280,6 +286,7 @@ class GameManager:
                 if restart_rect.collidepoint(event.pos):
                     self.reset_run()
                 elif shop_rect.collidepoint(event.pos):
+                    self.starfield.trigger_implosion() # Activar efecto Warp Inverso
                     self.state = GameState.TRANSITION_TO_SHOP
                 elif menu_rect.collidepoint(event.pos):
                     self.return_to_menu()
@@ -302,6 +309,7 @@ class GameManager:
                 # Botón Volver (Centro) -> AHORA ES JUGAR
                 center_x, center_y = SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2
                 if math.sqrt((mx - center_x)**2 + (my - center_y)**2) < 25: # Radio ajustado a 25
+                    self.starfield.trigger_explosion() # Activar efecto Warp
                     self.reset_run()
 
     def _update_transition_summary(self):
@@ -326,9 +334,13 @@ class GameManager:
         # El agujero negro decrece (o crece si viene de la tienda)
         self.black_hole.update()
         
+        # Actualizar explosión de estrellas si está activa
+        self.starfield.update()
+        
         # Si ya llegó al tamaño base
         if abs(self.black_hole.radius - self.black_hole.target_radius) < 1:
             self.state = GameState.PLAYING
+            self.starfield.reset() # Resetear estrellas para la próxima vez
 
     def _update_playing(self):
         # 1. Timer de la Run
@@ -570,6 +582,11 @@ class GameManager:
             g = int(COLOR_BACKGROUND_SHOP[1] + (COLOR_BACKGROUND[1] - COLOR_BACKGROUND_SHOP[1]) * progress)
             b = int(COLOR_BACKGROUND_SHOP[2] + (COLOR_BACKGROUND[2] - COLOR_BACKGROUND_SHOP[2]) * progress)
             surface.fill((r, g, b))
+            
+            # Dibujar Starfield explotando (se desvanece con el progreso)
+            # Podemos hacer que el alpha baje a medida que el fondo se vuelve beige
+            # Como Starfield.draw no tiene alpha global, confiamos en que el beige tape las estrellas o que se salgan de pantalla
+            self.starfield.draw(surface, black_hole_radius=self.black_hole.radius)
         elif self.state == GameState.TRANSITION_TO_SHOP:
              # Aquí el agujero negro cubre casi todo al principio, así que podemos poner el fondo oscuro directamente
              # o hacer una interpolación inversa si se viera algo.
@@ -627,9 +644,16 @@ class GameManager:
             self._draw_progression(surface)
         elif self.state == GameState.TRANSITION_TO_SHOP or self.state == GameState.TRANSITION_FROM_SHOP:
             # Dibujar Summary debajo
-            self._draw_summary(surface)
-            # Dibujar círculo de transición
-            pygame.draw.circle(surface, COLOR_BACKGROUND, (SCREEN_WIDTH//2, SCREEN_HEIGHT//2), int(self.shop_transition_radius))
+            # self._draw_summary(surface) # Ya no dibujamos summary debajo, queremos ver el fondo
+            
+            # Fondo oscuro
+            surface.fill(COLOR_BACKGROUND_SHOP)
+            
+            # Dibujar Starfield implosionando
+            self.starfield.draw(surface, black_hole_radius=self.black_hole.radius)
+            
+            # Dibujar círculo de transición (Agujero negro encogiéndose)
+            # Ya se dibuja en draw() principal
         
         if self.state == GameState.PAUSED:
             self._draw_pause_overlay(surface)
@@ -839,6 +863,9 @@ class GameManager:
     def _draw_progression(self, surface):
         # Fondo Espacial (Ya no beige)
         # El agujero negro central se dibuja en el método draw() principal
+        
+        # Dibujar Starfield (con culling del agujero negro)
+        self.starfield.draw(surface, black_hole_radius=self.black_hole.radius)
         
         center_x, center_y = SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2
         
