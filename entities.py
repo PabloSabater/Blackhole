@@ -250,6 +250,126 @@ class Asteroid(CelestialBody):
             
         return points
 
+class Planet(CelestialBody):
+    def _init_stats(self):
+        # Colores de Planetas (Más vivos y saturados que los asteroides)
+        # Nivel 1: Gaseoso (Rosa/Morado)
+        # Nivel 2: Habitable (Azul/Verde)
+        # Nivel 3: Volcánico (Rojo/Naranja)
+        # Nivel 4: Hielo (Cian/Blanco)
+        # Nivel 5: Metálico (Plata/Oro)
+        # Nivel 6: Exótico (Negro/Violeta)
+        PLANET_COLORS = {
+            1: (200, 100, 200),
+            2: (50, 200, 100),
+            3: (255, 80, 50),
+            4: (100, 255, 255),
+            5: (255, 215, 0),
+            6: (150, 0, 255)
+        }
+        self.color = PLANET_COLORS.get(self.level, (255, 255, 255))
+        
+        # Los planetas son mucho más grandes y pesados
+        self.size_multiplier = random.uniform(1.5, 3.0)
+        
+        # Defensa muy alta (Son duros de roer)
+        self.defense_factor = 2.0 + (self.level * 1.0)
+        
+        # Masa masiva
+        self.mass = self.level * 50 * self.size_multiplier
+        
+        # Vida masiva (x5 respecto a asteroides)
+        base_hp = 150 * self.level 
+        self.max_health = base_hp * (self.size_multiplier ** 1.2)
+        self.current_health = self.max_health
+        
+        # Valor muy alto
+        self.value = int((self.level ** 2) * (self.size_multiplier ** 1.5) * 50)
+        
+        # Movimiento lento y majestuoso
+        self.angular_speed_base = 0.002 * random.choice([-1, 1])
+        
+        # Tamaño visual
+        self.target_size = (20 + (self.level * 8)) * self.size_multiplier
+        self.base_size = self.target_size
+        self.spawn_anim_duration = 60 # Animación lenta
+        
+        self.dark_color = tuple(max(0, c - 80) for c in self.color)
+        
+        # Atmósfera (Color secundario)
+        self.atmosphere_color = tuple(min(255, c + 50) for c in self.color)
+        self.atmosphere_pulse = random.uniform(0, 6.28)
+
+    def _generate_shape(self):
+        # Los planetas son círculos perfectos, no necesitamos puntos irregulares
+        # Pero generamos un círculo de alta resolución para mantener compatibilidad con el draw() base si fuera necesario
+        # Aunque sobreescribiremos draw() para hacerlo más bonito
+        num_points = 32
+        points = []
+        for i in range(num_points):
+            theta = (i / num_points) * 2 * math.pi
+            px = math.cos(theta)
+            py = math.sin(theta)
+            points.append((px, py))
+        return points
+
+    def update(self):
+        super().update()
+        self.atmosphere_pulse += 0.05
+
+    def draw(self, surface, zoom=1.0):
+        # Sobreescribimos draw para hacer un círculo perfecto con atmósfera
+        
+        # Posición en pantalla
+        center_x, center_y = SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2
+        screen_x = center_x + (self.x - center_x) * zoom
+        screen_y = center_y + (self.y - center_y) * zoom
+        
+        # Tamaño actual (con animación de spawn)
+        screen_size = self.current_size * zoom
+        
+        if screen_size < 1: return
+        
+        # Culling simple
+        if (screen_x + screen_size < 0 or screen_x - screen_size > SCREEN_WIDTH or
+            screen_y + screen_size < 0 or screen_y - screen_size > SCREEN_HEIGHT):
+            return
+
+        # 1. Atmósfera (Glow externo)
+        pulse = (math.sin(self.atmosphere_pulse) + 1) / 2 # 0.0 a 1.0
+        atmo_size = screen_size + (5 + 5 * pulse) * zoom
+        
+        # Superficie temporal para transparencia
+        atmo_surf_size = int(atmo_size * 2)
+        atmo_surf = pygame.Surface((atmo_surf_size, atmo_surf_size), pygame.SRCALPHA)
+        
+        pygame.draw.circle(atmo_surf, (*self.atmosphere_color, 50), (atmo_surf_size//2, atmo_surf_size//2), int(atmo_size))
+        surface.blit(atmo_surf, (screen_x - atmo_surf_size//2, screen_y - atmo_surf_size//2))
+        
+        # 2. Planeta Base (Círculo)
+        pygame.draw.circle(surface, self.color, (screen_x, screen_y), int(screen_size))
+        
+        # 3. Sombra (Efecto 3D simple)
+        # Sombra en la parte inferior derecha (lejos de la "luz" del centro/agujero negro?)
+        # Asumimos luz ambiental o desde el centro
+        # Vamos a hacer un "crescent" de sombra
+        shadow_offset = screen_size * 0.3
+        # Dibujamos un círculo oscuro desplazado y recortamos (simulado con superposición)
+        # Simplificación: Arco de sombra
+        
+        # 4. Barra de Vida (Circular o superpuesta)
+        # Usamos la lógica de "daño visual" del padre: oscurecer
+        # Pero como es un planeta, quizás grietas?
+        # Por ahora, barra de vida clásica pequeña debajo
+        if self.current_health < self.max_health:
+            hp_pct = self.current_health / self.max_health
+            bar_w = 40 * zoom
+            bar_h = 4 * zoom
+            pygame.draw.rect(surface, (50, 0, 0), (screen_x - bar_w/2, screen_y + screen_size + 5, bar_w, bar_h))
+            pygame.draw.rect(surface, (0, 255, 0), (screen_x - bar_w/2, screen_y + screen_size + 5, bar_w * hp_pct, bar_h))
+            
+        return points
+
 class BlackHole:
     def __init__(self):
         self.x = SCREEN_WIDTH // 2

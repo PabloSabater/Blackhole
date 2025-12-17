@@ -163,5 +163,28 @@ UPGRADES = {
         "description": "Aumenta el daño crítico",
         "base_value": 1.5, # 150% base
         "increment": 0.5 # +50% daño
+    },
+    "planet_unlock": {
+        "name": "Formación Planetaria",
+        "category": "planet",
+        "parent": "mass",
+        "tree_pos": (2, -1.6), # Debajo de masa
+        "base_cost": 1000,     # Coste alto, late game
+        "cost_multiplier": 2.0,
+        "description": "Permite la formación de Planetas",
+        "base_value": 0,
+        "increment": 1,
+        "max_level": 1
+    },
+    "planet_mass": {
+        "name": "Acreción Planetaria",
+        "category": "planet",
+        "parent": "planet_unlock",
+        "tree_pos": (3, -1.6),
+        "base_cost": 1500,
+        "cost_multiplier": 2.0,
+        "description": "Aumenta el nivel de los Planetas",
+        "base_value": 0,
+        "increment": 1
     }
 }

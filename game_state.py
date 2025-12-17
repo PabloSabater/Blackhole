@@ -3,7 +3,7 @@ import random
 import math
 from enum import Enum
 from config import *
-from entities import CelestialBody, Asteroid, BlackHole, PlayerCursor, FloatingText, Shockwave, Debris, Starfield
+from entities import CelestialBody, Asteroid, Planet, BlackHole, PlayerCursor, FloatingText, Shockwave, Debris, Starfield
 
 class GameState(Enum):
     MENU = 0
@@ -56,12 +56,20 @@ class GameManager:
         self.time_refund_chance = 0.0 # Probabilidad de recuperar tiempo
         self.current_spawn_limit = self.bodies_per_level
         
-        # Nuevas Stats
-        self.mass_bonus = 0
+        # Nuevas Stats (Asteroides)
+        self.asteroid_mass_bonus = 0
+        self.asteroid_fission_chance = 0.0
+        
+        # Nuevas Stats (Globales)
         self.resonance_pct = 0.0
-        self.fission_chance = 0.0
         self.critical_chance = 0.0
         self.critical_damage_multiplier = 1.5
+        
+        # Nuevas Stats (Planetas)
+        self.planets_unlocked = False
+        self.planet_mass_bonus = 0
+        self.planet_spawn_rate = 0.0
+        self.planet_defense_reduction = 0.0
         
         # Variables de Transición
         self.shop_transition_radius = 0
@@ -129,7 +137,7 @@ class GameManager:
         
         # Masa (Nivel extra)
         mass_data = UPGRADES["mass"]
-        self.mass_bonus = mass_data["base_value"] + (self.upgrades["mass"] * mass_data["increment"])
+        self.asteroid_mass_bonus = mass_data["base_value"] + (self.upgrades["mass"] * mass_data["increment"])
         
         # Resonancia (Recuperar oleada)
         res_data = UPGRADES["resonance"]
@@ -144,7 +152,17 @@ class GameManager:
         crit_dmg_data = UPGRADES["critical_damage"]
         self.critical_damage_multiplier = crit_dmg_data["base_value"] + (self.upgrades["critical_damage"] * crit_dmg_data["increment"])
 
-        self.fission_chance = fis_data["base_value"] + (self.upgrades["fission"] * fis_data["increment"])
+        # Asteroid Stats
+        fis_data = UPGRADES["fission"]
+        self.asteroid_fission_chance = fis_data["base_value"] + (self.upgrades["fission"] * fis_data["increment"])
+        
+        # Planet Stats
+        self.planets_unlocked = self.upgrades.get("planet_unlock", 0) > 0
+        
+        pmass_data = UPGRADES["planet_mass"]
+        self.planet_mass_bonus = pmass_data["base_value"] + (self.upgrades["planet_mass"] * pmass_data["increment"])
+        # self.planets_unlocked = self.upgrades.get("planet_unlock", 0) > 0
+        # ...
 
     def update(self):
         if self.state == GameState.MENU:
@@ -368,23 +386,37 @@ class GameManager:
             if self.spawn_timer >= 2: # Spawn MUY rápido (cada 2 frames)
                 self.spawn_timer = 0
                 
-                # Lógica de nivel de cuerpo
-                # El nivel máximo está determinado por la mejora de Masa (Nucleosíntesis)
-                # Nivel base 1 + bonus de masa
-                max_unlocked_level = min(6, 1 + int(self.mass_bonus))
+                # Lógica de Spawning (Asteroides vs Planetas)
+                should_spawn_planet = False
+                if self.planets_unlocked:
+                    # 20% de probabilidad de spawnear un planeta si están desbloqueados
+                    if random.random() < 0.2:
+                        should_spawn_planet = True
                 
-                # Spawneamos un nivel aleatorio entre el mínimo (basado en agujero) y el máximo desbloqueado
-                # Mínimo: Nivel del agujero - 3
-                min_level = max(1, self.black_hole.level - 3)
+                if should_spawn_planet:
+                    # Lógica de nivel de Planeta
+                    # Nivel base 1 + bonus de masa planetaria
+                    max_planet_level = min(6, 1 + int(self.planet_mass_bonus))
+                    # Los planetas siempre intentan salir con el mayor nivel posible
+                    level = max_planet_level
+                    new_body = Planet(level=level)
+                else:
+                    # Lógica de nivel de Asteroide
+                    # El nivel máximo está determinado por la mejora de Masa (Nucleosíntesis)
+                    # Nivel base 1 + bonus de masa
+                    max_unlocked_level = min(6, 1 + int(self.asteroid_mass_bonus))
+                    
+                    # Spawneamos un nivel aleatorio entre el mínimo (basado en agujero) y el máximo desbloqueado
+                    # Mínimo: Nivel del agujero - 3
+                    min_level = max(1, self.black_hole.level - 3)
+                    
+                    # Aseguramos que min_level no supere a max_unlocked_level
+                    real_min_level = min(min_level, max_unlocked_level)
+                    
+                    level = random.randint(real_min_level, max_unlocked_level)
+                    new_body = Asteroid(level=level)
                 
-                # Aseguramos que min_level no supere a max_unlocked_level
-                # Si el agujero es nivel 5 pero solo desbloqueaste asteroides nivel 2, 
-                # saldrán asteroides nivel 2 (el máximo posible)
-                real_min_level = min(min_level, max_unlocked_level)
-                
-                level = random.randint(real_min_level, max_unlocked_level)
-                
-                new_body = Asteroid(level=level)
+                # Calcular distancia de spawn dinámica
                 
                 # Calcular distancia de spawn dinámica
                 # Mínimo: Radio del agujero negro + margen (para no nacer dentro)
@@ -516,11 +548,12 @@ class GameManager:
                         # Feedback visual de tiempo (Azul)
                         self.floating_texts.append(FloatingText(body.x, body.y - 50, "+1s", COLOR_TIME_TEXT))
                     
-                    # Probabilidad de Fisión (Dividir)
-                    if random.random() < self.fission_chance:
+                    # Probabilidad de Fisión (Dividir) - SOLO ASTEROIDES
+                    # Verificamos si es instancia de Asteroid (aunque por ahora todos lo son)
+                    if isinstance(body, Asteroid) and random.random() < self.asteroid_fission_chance:
                         # Generar nuevo cuerpo del mismo nivel o superior (+1)
                         # Pero limitado por el nivel máximo desbloqueado
-                        max_unlocked_level = min(6, 1 + int(self.mass_bonus))
+                        max_unlocked_level = min(6, 1 + int(self.asteroid_mass_bonus))
                         new_level = min(max_unlocked_level, body.level + random.randint(0, 1))
                         
                         # Crear nuevo cuerpo
@@ -1148,6 +1181,11 @@ class GameManager:
         
         lbl_uniq = self.font_desc.render("ÚNICAS", True, COLOR_TEXT_LIGHT)
         surface.blit(lbl_uniq, (center_x - lbl_uniq.get_width()//2, center_y - 150))
+        
+        # Etiqueta Planetas (Abajo)
+        if self.planets_unlocked:
+            lbl_planet = self.font_desc.render("PLANETAS", True, COLOR_TEXT_LIGHT)
+            surface.blit(lbl_planet, (center_x - lbl_planet.get_width()//2, center_y + 150))
 
         # DIBUJAR TOOLTIP AL FINAL (ENCIMA DE TODO)
         if hovered_node:
