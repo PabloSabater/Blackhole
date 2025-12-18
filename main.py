@@ -28,6 +28,10 @@ def main():
                 running = False
             
             if event.type == pygame.KEYDOWN:
+                # Debug Inputs
+                if DEBUG_MODE:
+                    game.handle_debug_input(event.key)
+
                 if event.key == pygame.K_ESCAPE:
                     # Toggle Pausa
                     if game.state == GameState.PLAYING:

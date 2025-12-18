@@ -1,6 +1,8 @@
 import pygame
 import random
 import math
+import json
+import os
 from enum import Enum
 from config import *
 from entities import CelestialBody, Asteroid, Planet, BlackHole, PlayerCursor, FloatingText, Shockwave, Debris, Starfield
@@ -92,6 +94,69 @@ class GameManager:
         self.font_desc = pygame.font.SysFont("Arial", 14)
         self.font_cost = pygame.font.SysFont("Arial", 16, bold=True)
 
+        # Cargar partida guardada
+        self.load_game()
+
+    def save_game(self):
+        """Guarda el progreso del juego en un archivo JSON"""
+        data = {
+            "total_money": self.total_money,
+            "upgrades": self.upgrades
+        }
+        try:
+            with open(SAVE_FILE, "w") as f:
+                json.dump(data, f, indent=4)
+            print("Juego guardado correctamente.")
+        except Exception as e:
+            print(f"Error al guardar el juego: {e}")
+
+    def load_game(self):
+        """Carga el progreso del juego desde un archivo JSON"""
+        if not os.path.exists(SAVE_FILE):
+            return
+
+        try:
+            with open(SAVE_FILE, "r") as f:
+                data = json.load(f)
+                
+            self.total_money = data.get("total_money", 0)
+            saved_upgrades = data.get("upgrades", {})
+            
+            # Actualizar upgrades con cuidado de no borrar claves nuevas si las hubiera
+            for key, value in saved_upgrades.items():
+                if key in self.upgrades:
+                    self.upgrades[key] = value
+            
+            # Recalcular stats con los valores cargados
+            self._recalculate_stats()
+            print("Juego cargado correctamente.")
+        except Exception as e:
+            print(f"Error al cargar el juego: {e}")
+
+    def handle_debug_input(self, key):
+        """Maneja inputs de depuración"""
+        if not DEBUG_MODE:
+            return
+
+        if key == pygame.K_m:
+            self.total_money += 1000000
+            self.money_earned += 1000000 # Para ver el efecto visual en summary si estamos ahí
+            self.floating_texts.append(FloatingText(SCREEN_WIDTH//2, SCREEN_HEIGHT//2, "+$1M (DEBUG)", COLOR_MONEY_TEXT, size=40))
+            print("DEBUG: Added 1,000,000 money")
+            
+        elif key == pygame.K_r:
+            # Resetear run actual
+            self.reset_run()
+            print("DEBUG: Run reset")
+            
+        elif key == pygame.K_s:
+            # Acelerar tiempo (Speed Up)
+            # Implementación simple: Reducir el tiempo restante drásticamente o aumentar FPS (no recomendado cambiar FPS)
+            # Mejor: Aumentar time scale o simplemente restar tiempo para acabar rápido
+            if self.state == GameState.PLAYING:
+                self.time_remaining = max(1, self.time_remaining - 10)
+                print("DEBUG: Time skipped")
+
     def get_upgrade_cost(self, key):
         """Calcula el coste del siguiente nivel de una mejora"""
         data = UPGRADES[key]
@@ -112,6 +177,7 @@ class GameManager:
             self.total_money -= cost
             self.upgrades[key] += 1
             self._recalculate_stats()
+            self.save_game() # Guardar tras compra
             return True
         return False
 
@@ -355,6 +421,7 @@ class GameManager:
             self.bodies = []         # Limpiar cuerpos
             self.debris_list = []    # Limpiar debris
             self.shockwaves = []     # Limpiar ondas
+            self.save_game()         # Guardar al terminar la run
 
     def _update_transition_play(self):
         # El agujero negro decrece (o crece si viene de la tienda)

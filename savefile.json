@@ -1,0 +1,16 @@
+{
+    "total_money": 997382,
+    "upgrades": {
+        "damage": 2,
+        "radius": 0,
+        "duration": 0,
+        "spawn_rate": 2,
+        "mass": 2,
+        "resonance": 0,
+        "fission": 1,
+        "critical_chance": 2,
+        "critical_damage": 1,
+        "planet_unlock": 1,
+        "planet_mass": 0
+    }
+}
