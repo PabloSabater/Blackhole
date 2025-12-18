@@ -48,6 +48,10 @@ CURSOR_RADIUS = 35      # Radio del área de efecto (Reducido de 80 para permiti
 
 # --- Configuración del Agujero Negro ---
 BLACK_HOLE_RADIUS_BASE = 50
+
+# --- Configuración de Desarrollo ---
+DEBUG_MODE = True # Set to False for release
+SAVE_FILE = "savefile.json"
 BLACK_HOLE_GROWTH_FACTOR = 5 # Cuánto crece por nivel
 XP_BASE_REQUIREMENT = 300    # XP necesaria para nivel 1->2 (Reducido de 500 para feedback más rápido)
 XP_SCALING_FACTOR = 1.5      # Multiplicador de XP por nivel
