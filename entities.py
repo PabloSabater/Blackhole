@@ -250,7 +250,46 @@ class Asteroid(CelestialBody):
             
         return points
 
+class Moon:
+    def __init__(self, parent_planet):
+        self.parent = parent_planet
+        self.angle = random.uniform(0, 2 * math.pi)
+        self.orbit_speed = 0.05
+        self.distance = MOON_ORBIT_RADIUS + (parent_planet.target_size if parent_planet else 10)
+        self.size = MOON_SIZE
+        self.color = (255, 255, 255) # Blanco puro para máximo contraste
+        self.x = 0
+        self.y = 0
+        
+        # Cursor mode
+        self.life_timer = 0 # In frames
+        
+    def update(self):
+        self.angle += self.orbit_speed
+        if self.parent:
+             # Update distance based on parent size (dynamic)
+            self.distance = MOON_ORBIT_RADIUS + self.parent.current_size
+            self.x = self.parent.x + math.cos(self.angle) * self.distance
+            self.y = self.parent.y + math.sin(self.angle) * self.distance
+            
+    def draw(self, surface, zoom=1.0):
+        center_x, center_y = SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2
+        screen_x = center_x + (self.x - center_x) * zoom
+        screen_y = center_y + (self.y - center_y) * zoom
+        screen_size = self.size * zoom
+        
+        # Dibujar cuerpo (Blanco brillante)
+        pygame.draw.circle(surface, self.color, (screen_x, screen_y), screen_size)
+        # Dibujar borde negro para contraste
+        pygame.draw.circle(surface, (0, 0, 0), (screen_x, screen_y), screen_size, 2)
+
 class Planet(CelestialBody):
+    def __init__(self, level, has_moon=False):
+        super().__init__(level)
+        self.moons = []
+        if has_moon:
+            self.moons.append(Moon(self))
+
     def _init_stats(self):
         # Usamos los mismos colores que los asteroides para mantener consistencia
         self.color = MASS_COLORS.get(self.level, (255, 255, 255))
@@ -361,6 +400,8 @@ class Planet(CelestialBody):
     def update(self):
         super().update()
         self.atmosphere_pulse += 0.05
+        for moon in self.moons:
+            moon.update()
 
     def draw(self, surface, zoom=1.0):
         # Sobreescribimos draw para hacer un círculo perfecto con atmósfera
@@ -442,6 +483,10 @@ class Planet(CelestialBody):
         
         # 4. Borde (Opcional, para definir mejor)
         pygame.draw.circle(surface, self.dark_color, (screen_x, screen_y), int(screen_size), 2)
+
+        # 5. Dibujar Lunas
+        for moon in self.moons:
+            moon.draw(surface, zoom)
 
 class BlackHole:
     def __init__(self):

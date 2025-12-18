@@ -72,6 +72,10 @@ class GameManager:
         self.planet_mass_bonus = 0
         self.planet_spawn_rate = 0.0
         self.planet_defense_reduction = 0.0
+        self.planet_fission_chance = 0.0
+        self.moons_unlocked = False
+        self.moon_chance = 0.0
+        self.cursor_moons = []
         
         # Variables de Transición
         self.shop_transition_radius = 0
@@ -227,6 +231,13 @@ class GameManager:
         
         pmass_data = UPGRADES["planet_mass"]
         self.planet_mass_bonus = pmass_data["base_value"] + (self.upgrades["planet_mass"] * pmass_data["increment"])
+
+        pfis_data = UPGRADES["planet_fission"]
+        self.planet_fission_chance = pfis_data["base_value"] + (self.upgrades["planet_fission"] * pfis_data["increment"])
+
+        self.moons_unlocked = self.upgrades.get("moon_unlock", 0) > 0
+        moon_chance_data = UPGRADES["moon_chance"]
+        self.moon_chance = moon_chance_data["base_value"] + (self.upgrades["moon_chance"] * moon_chance_data["increment"])
         # self.planets_unlocked = self.upgrades.get("planet_unlock", 0) > 0
         # ...
 
@@ -476,7 +487,12 @@ class GameManager:
                     real_min_level = min(min_planet_level, max_planet_level)
                     
                     level = random.randint(real_min_level, max_planet_level)
-                    new_body = Planet(level=level)
+                    
+                    has_moon = False
+                    if self.moons_unlocked and random.random() < self.moon_chance:
+                        has_moon = True
+                        
+                    new_body = Planet(level=level, has_moon=has_moon)
                 else:
                     # Lógica de nivel de Asteroide
                     # El nivel máximo está determinado por la mejora de Masa (Nucleosíntesis)
@@ -559,9 +575,34 @@ class GameManager:
         # Eliminar debris que ha llegado al centro (radio < radio agujero negro)
         self.debris_list = [d for d in self.debris_list if d.orbit_radius > self.black_hole.radius]
 
+        # Update Cursor Moons
+        active_moons = []
+        for i, moon in enumerate(self.cursor_moons):
+            moon.life_timer -= 1
+            if moon.life_timer > 0:
+                # Calculate position around cursor
+                total_moons = len(self.cursor_moons)
+                angle_offset = (2 * math.pi / total_moons) * i
+                global_rotation = pygame.time.get_ticks() * 0.002
+                
+                moon.angle = angle_offset + global_rotation
+                moon.distance = MOON_CURSOR_ORBIT_RADIUS
+                
+                # Update position relative to cursor (Screen Space)
+                moon.x = self.cursor.x + math.cos(moon.angle) * moon.distance
+                moon.y = self.cursor.y + math.sin(moon.angle) * moon.distance
+                
+                active_moons.append(moon)
+        self.cursor_moons = active_moons
+
         # 4. Lógica de Daño (Optimización Distancia Cuadrada)
         self.damage_tick_timer += 1
-        if self.damage_tick_timer >= DAMAGE_TICK_RATE:
+        
+        # Calculate dynamic tick rate based on moons
+        speed_mult = 1.0 + (len(self.cursor_moons) * MOON_SPEED_BOOST)
+        current_tick_rate = DAMAGE_TICK_RATE / speed_mult
+        
+        if self.damage_tick_timer >= current_tick_rate:
             self.damage_tick_timer = 0
             self._apply_damage()
 
@@ -610,6 +651,35 @@ class GameManager:
                 
                 if destroyed:
                     bodies_to_remove.append(body)
+                    
+                    # Transfer Moons to Cursor
+                    if isinstance(body, Planet):
+                        moons_added = False
+                        for moon in body.moons:
+                            if len(self.cursor_moons) < MAX_CURSOR_MOONS:
+                                moon.parent = None
+                                moon.life_timer = MOON_ORBIT_DURATION * FPS
+                                moon.size = MOON_SIZE_CURSOR # Reducir tamaño al pasar al cursor
+                                self.cursor_moons.append(moon)
+                                moons_added = True
+                        
+                        # Refresh existing moons if new ones added OR if we just killed a planet with moons (even if full)
+                        # Logic: If we capture a moon, refresh. If we are full, maybe we should still refresh?
+                        # User said: "Cada luna reinicia el contador de destrucción de las que haya orbitando"
+                        # So if the planet had moons, we refresh, even if we couldn't add them all?
+                        # Let's assume we refresh if the planet HAD moons, regardless of if we added them (as a bonus for killing it)
+                        # OR strictly only if we added one. Let's stick to "if we added one" or "if planet had moons".
+                        # Given the "limit", it feels fair to refresh if we kill a moon-bearing planet.
+                        
+                        if body.moons:
+                            for m in self.cursor_moons:
+                                m.life_timer = MOON_ORBIT_DURATION * FPS
+                            
+                            if moons_added:
+                                self.floating_texts.append(FloatingText(body.x, body.y - 50, "MOON CAPTURED!", (200, 200, 255)))
+                            else:
+                                self.floating_texts.append(FloatingText(body.x, body.y - 50, "MOON REFRESH!", (200, 200, 255)))
+
                     self.money_earned += body.value
                     self.total_money += body.value # Sumar al banco global
                     self.bodies_destroyed[body.level] += 1
@@ -650,6 +720,25 @@ class GameManager:
                         
                         # El texto aparece donde murió el padre
                         self.floating_texts.append(FloatingText(body.x, body.y - 70, "SPLIT!", COLOR_XP_BAR_FILL))
+
+                    # Probabilidad de Fisión (Dividir) - PLANETAS
+                    if isinstance(body, Planet) and random.random() < self.planet_fission_chance:
+                        # Generar nuevo planeta del mismo nivel o superior (+1)
+                        max_planet_level = min(6, 1 + int(self.planet_mass_bonus))
+                        new_level = min(max_planet_level, body.level + random.randint(0, 1))
+                        
+                        # Crear nuevo planeta (sin lunas para evitar cascada infinita de lunas gratis)
+                        new_body = Planet(level=new_level, has_moon=False)
+                        
+                        # Heredar posición
+                        min_spawn = max(SPAWN_DISTANCE_MIN, body.orbit_radius - 50)
+                        max_spawn = body.orbit_radius + 50
+                        new_body.set_spawn_position(min_spawn, max_spawn)
+                        new_body.angle = body.angle + random.uniform(-0.3, 0.3)
+                        
+                        new_body.update()
+                        self.bodies.append(new_body)
+                        self.floating_texts.append(FloatingText(body.x, body.y - 70, "PLANET SPLIT!", COLOR_XP_BAR_FILL))
 
                     # Generar Debris (Escalado con tamaño)
                     # Más debris para cuerpos más grandes
@@ -793,6 +882,10 @@ class GameManager:
         for body in self.bodies:
             body.draw(surface, zoom)
             
+        # Draw Cursor Moons (Screen Space)
+        for moon in self.cursor_moons:
+            moon.draw(surface, 1.0) # Zoom 1.0 because they are screen space
+
         if draw_black_hole_on_top:
             # En transiciones a pantalla completa, ignoramos el zoom para que cubra todo bien
             if self.state == GameState.TRANSITION_TO_SUMMARY:

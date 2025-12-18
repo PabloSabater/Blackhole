@@ -50,7 +50,7 @@ CURSOR_RADIUS = 35      # Radio del área de efecto (Reducido de 80 para permiti
 BLACK_HOLE_RADIUS_BASE = 50
 
 # --- Configuración de Desarrollo ---
-DEBUG_MODE = False # Set to False for release
+DEBUG_MODE = True # Set to False for release
 SAVE_FILE = "savefile.json"
 BLACK_HOLE_GROWTH_FACTOR = 5 # Cuánto crece por nivel
 XP_BASE_REQUIREMENT = 300    # XP necesaria para nivel 1->2 (Reducido de 500 para feedback más rápido)
@@ -172,7 +172,7 @@ UPGRADES = {
         "name": "Formación Planetaria",
         "category": "planet",
         "parent": "mass",
-        "tree_pos": (2, -1.6), # Debajo de masa
+        "tree_pos": (1, -1.6), # Debajo de masa
         "base_cost": 1000,     # Coste alto, late game
         "cost_multiplier": 2.0,
         "description": "Permite la formación de Planetas",
@@ -184,11 +184,56 @@ UPGRADES = {
         "name": "Acreción Planetaria",
         "category": "planet",
         "parent": "planet_unlock",
-        "tree_pos": (3, -1.6),
+        "tree_pos": (2, -1.6),
         "base_cost": 1500,
         "cost_multiplier": 2.0,
         "description": "Aumenta el nivel de los Planetas",
         "base_value": 0,
         "increment": 1
+    },
+    "moon_unlock": {
+        "name": "Captura Lunar",
+        "category": "planet",
+        "parent": "planet_unlock",
+        "tree_pos": (1, -2.4), # Debajo de planet unlock
+        "base_cost": 2000,
+        "cost_multiplier": 2.0,
+        "description": "Planetas pueden tener lunas",
+        "base_value": 0,
+        "increment": 1,
+        "max_level": 1
+    },
+    "moon_chance": {
+        "name": "Estabilidad Orbital",
+        "category": "planet",
+        "parent": "moon_unlock",
+        "tree_pos": (2, -2.4),
+        "base_cost": 1000,
+        "cost_multiplier": 1.5,
+        "description": "Probabilidad de lunas",
+        "base_value": 0.05, # 5% base
+        "increment": 0.05, # +5% por nivel
+        "max_level": 5
+    },
+    "planet_fission": {
+        "name": "Fragmentación Planetaria",
+        "category": "planet",
+        "parent": "planet_mass",
+        "tree_pos": (3, -1.6),
+        "base_cost": 2000,
+        "cost_multiplier": 1.8,
+        "description": "Probabilidad de dividir planetas",
+        "base_value": 0.0,
+        "increment": 0.1, # +10% probabilidad
+        "max_level": 5
     }
 }
+
+# --- Configuración de Lunas ---
+MOON_ORBIT_DURATION = 5.0 # Segundos que dura la luna orbitando el cursor
+MOON_SPEED_BOOST = 0.05   # 5% de velocidad extra por luna
+MOON_SIZE = 14            # Tamaño visual de la luna en planeta (Aumentado para visibilidad)
+MOON_SIZE_CURSOR = 9      # Tamaño visual de la luna en cursor (Aumentado de 6)
+MOON_ORBIT_RADIUS = 25    # Distancia de órbita relativa al planeta
+MOON_CURSOR_ORBIT_RADIUS = 50 # Distancia de órbita en el cursor
+MAX_CURSOR_MOONS = 8      # Máximo de lunas orbitando el cursor
