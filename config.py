@@ -4,7 +4,7 @@ import pygame
 SCREEN_WIDTH = 1024
 SCREEN_HEIGHT = 768
 FPS = 60
-TITLE = "Cosmic Incremental"
+TITLE = "Project Blackhole"
 
 # --- Paleta de Colores (Cozy & Pastel) ---
 # Fondo Beige Claro (Juego)
@@ -50,7 +50,7 @@ CURSOR_RADIUS = 35      # Radio del área de efecto (Reducido de 80 para permiti
 BLACK_HOLE_RADIUS_BASE = 50
 
 # --- Configuración de Desarrollo ---
-DEBUG_MODE = True # Set to False for release
+DEBUG_MODE = False # Set to False for release
 SAVE_FILE = "savefile.json"
 BLACK_HOLE_GROWTH_FACTOR = 5 # Cuánto crece por nivel
 XP_BASE_REQUIREMENT = 300    # XP necesaria para nivel 1->2 (Reducido de 500 para feedback más rápido)

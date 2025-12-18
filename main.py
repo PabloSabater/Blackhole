@@ -11,6 +11,17 @@ def main():
     flags = pygame.DOUBLEBUF
     screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), flags, vsync=1)
     
+    # --- Configuración de Icono ---
+    # Generar icono proceduralmente (Agujero negro sobre fondo beige)
+    icon_size = 32
+    icon_surface = pygame.Surface((icon_size, icon_size))
+    icon_surface.fill(COLOR_BACKGROUND)
+    # Dibujar agujero negro
+    pygame.draw.circle(icon_surface, COLOR_BLACK_HOLE, (icon_size//2, icon_size//2), icon_size//2 - 2)
+    # Dibujar borde suave (opcional, para que destaque)
+    pygame.draw.circle(icon_surface, (50, 50, 50), (icon_size//2, icon_size//2), icon_size//2 - 2, 1)
+    pygame.display.set_icon(icon_surface)
+
     pygame.display.set_caption(TITLE)
     clock = pygame.time.Clock()
     
