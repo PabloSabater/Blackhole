@@ -11,6 +11,9 @@
         "critical_chance": 2,
         "critical_damage": 1,
         "planet_unlock": 1,
-        "planet_mass": 0
+        "planet_mass": 0,
+        "moon_unlock": 0,
+        "moon_chance": 0,
+        "planet_fission": 0
     }
 }

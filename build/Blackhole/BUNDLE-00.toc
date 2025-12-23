@@ -1,3 +1,0 @@
-([('Blackhole',
-   '/Users/e052500/Proyectos/Blackhole/dist/Blackhole',
-   'EXECUTABLE')],)

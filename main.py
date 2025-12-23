@@ -1,15 +1,17 @@
 import pygame
 import sys
+import asyncio
 from config import *
 from game_state import GameManager, GameState
 
-def main():
+async def main():
     # Inicialización de Pygame
     pygame.init()
     
     # Flags de pantalla: Doble Buffer y VSync para evitar flickering/tearing
-    flags = pygame.DOUBLEBUF
-    screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), flags, vsync=1)
+    # flags = pygame.DOUBLEBUF
+    # screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), flags, vsync=1)
+    screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
     
     # --- Configuración de Icono ---
     # Generar icono proceduralmente (Agujero negro sobre fondo beige)
@@ -75,9 +77,10 @@ def main():
         # 4. Control de FPS
         pygame.display.flip()
         clock.tick(FPS)
+        await asyncio.sleep(0)
 
     pygame.quit()
     sys.exit()
 
 if __name__ == '__main__':
-    main()
+    asyncio.run(main())
